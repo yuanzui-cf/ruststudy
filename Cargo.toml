@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "utils",
+  "compile/calculator",
 ]
 
 [workspace.package]
