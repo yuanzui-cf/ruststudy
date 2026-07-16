@@ -1,0 +1,57 @@
+letter ::= [a-zA-Z_]
+digit ::= [0-9]
+identifier ::= letter ( letter | digit )*
+integer ::= digit+
+
+types ::= ( base_types | struct_expr | tuple_expr | enum_expr | identifier ) ( "[" integer? "]" )*
+base_types ::= 'i8' | 'i16' | 'i32' | 'i64'
+			| 'u8' | 'u16' | 'u32' | 'u64'
+			| 'f32' | 'f64'
+			| 'bool' | 'char'
+			| 'string'
+range ::= primary_expr ".." "="? primary_expr
+
+primary_expr ::= identifier
+				| integer
+				| block
+				| object
+				| if_expr
+				| while_expr
+				| for_expr
+				| loop_expr
+				| "(" expr ")"
+mul_expr ::= primary_expr ( ( "*" | "/" | "%" ) primary_expr )*
+add_expr ::= mul_expr ( ( "+" | "-" ) mul_expr )*
+rel_expr ::= add_expr ( ("<" | "<=" | ">" | ">=" | "==" | "!=") add_expr )?
+expr ::= rel_expr
+
+variable_expr ::= ( "let" "mut"? identifier (":" types)? ("=" expr)? ) | ( "mut"? identifier (":" types)? ":=" expr ) ";"
+assignment ::= indentifier "=" expr ";"
+
+block ::= "{" statement* expr? "}"
+object ::= "{" ( identifier ":" expr ( "," identifier ":" expr )* ","? )? "}"
+
+if_expr ::= "if" expr block ( "else" ( if_expr | block ) )?
+while_expr ::= "while" expr block ( "else" block )?
+for_expr ::= "for" ( identifier "in" range ) block
+loop_expr ::= "loop" block
+
+normal_params ::= identifier ":" types ( "," identifier ":" types )*
+params ::= "..." | normal_params ( "," "..." )?
+func_expr ::= "fn" identifier "(" params? ")" ( "->" types ) block
+
+tuple_expr ::= ( "tuple" identifier )? "(" ( types ( "," types )* )? ")"
+enum_expr ::= "enum" identifier "{" ( identifier ( tuple_expr | struct_expr )? ( "," identifier ( tuple_expr | struct_expr )? )* ","? )? "}"
+struct_expr ::= ( "struct" identifier )? "{" ( identifier ":" types ( "," identifier ":" types )* ","? )? "}"
+
+statement ::= variable_expr
+			| assignment
+			| func_expr
+			| struct_expr
+			| enum_expr
+			| tuple_expr
+			| expr ";"
+			| if_expr
+			| while_expr
+			| for_expr
+			| loop_expr

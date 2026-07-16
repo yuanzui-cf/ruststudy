@@ -1,0 +1,54 @@
+use std::{io, types};
+
+enum Value {
+	Str(string),
+	Num(i32),
+	Err {
+		code: i32,
+		msg: string,
+	}
+}
+
+struct Err {
+	code: i32,
+	msg: string,
+}
+
+fn somefunc() -> Result<(), Err> {
+	Result::Err(Err {
+		code: 114,
+		msg: "Uhhhhhh!",
+	})
+}
+
+fn output_wrapper(str: string, ...args) {
+	std::io::output("{} {}", args);
+}
+
+// Main function
+fn main() {
+	let mut name = "Hello, World";
+	name = "World, Hello!";
+
+	_name_2 := "UUUUUU";
+	mut _name_3 := "UUHHH";
+	_name_2 := "HHHH"; // Shadows previous _name_2
+
+	_some := if _name_2 == "HHHH" {
+		true
+	} else {
+		false
+	}; // true
+
+	arr: array<i32> := [1, 2, 3];
+	// or arr := 1..=3;
+
+	for i in arr {
+		output("{}", i);
+	}
+
+	let str: string;
+	input(str);
+
+	output("{} {}", name, str);
+}
