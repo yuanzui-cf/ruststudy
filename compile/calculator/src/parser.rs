@@ -1,9 +1,11 @@
-//! expr = (Token::Neg)? term ((Token::Add | Token::Neg) term)*
-//! term = power ((Token::Mul | Token::Div) power)*
-//! power = factor (Token::Exp power)?
-//! factor = Token::Number | Token::LP expr Token::RP
+//! expr ::= (Token::Neg)? term ((Token::Add | Token::Neg) term)*
+//! term ::= power ((Token::Mul | Token::Div) power)*
+//! power ::= factor (Token::Exp power)?
+//! factor ::= Token::Number | Token::LP expr Token::RP
 
 use std::{fmt::Display, iter::Peekable, str::Chars, vec::IntoIter};
+
+use crate::ast::{ASTNode, Op};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Token {
@@ -137,7 +139,7 @@ impl Parser {
             .ok_or_else(|| anyhow::anyhow!("Token end unexpectedly"))
     }
 
-    pub fn parse(&mut self) -> anyhow::Result<f64> {
+    pub fn parse(&mut self) -> anyhow::Result<ASTNode> {
         let res = self.expr()?;
 
         if let next = self.peek()?
@@ -149,7 +151,7 @@ impl Parser {
         Ok(res)
     }
 
-    pub fn expr(&mut self) -> anyhow::Result<f64> {
+    pub fn expr(&mut self) -> anyhow::Result<ASTNode> {
         let mut neg_flag = false;
 
         if self.peek()? == &Token::Neg {
@@ -160,7 +162,7 @@ impl Parser {
         let mut res = self.term()?;
 
         if neg_flag {
-            res = -res;
+            res = ASTNode::Negate(Box::new(res));
         }
 
         loop {
@@ -169,11 +171,11 @@ impl Parser {
             match tok {
                 Token::Add => {
                     self.cusume()?;
-                    res += self.term()?
+                    res = ASTNode::Binary(Box::new(res), Op::Add, Box::new(self.term()?));
                 }
                 Token::Neg => {
                     self.cusume()?;
-                    res -= self.term()?
+                    res = ASTNode::Binary(Box::new(res), Op::Neg, Box::new(self.term()?));
                 }
                 _ => break,
             };
@@ -182,7 +184,7 @@ impl Parser {
         Ok(res)
     }
 
-    pub fn term(&mut self) -> anyhow::Result<f64> {
+    pub fn term(&mut self) -> anyhow::Result<ASTNode> {
         let mut res = self.power()?;
 
         loop {
@@ -191,11 +193,11 @@ impl Parser {
             match tok {
                 Token::Mul => {
                     self.cusume()?;
-                    res *= self.power()?
+                    res = ASTNode::Binary(Box::new(res), Op::Mul, Box::new(self.power()?));
                 }
                 Token::Div => {
                     self.cusume()?;
-                    res /= self.power()?
+                    res = ASTNode::Binary(Box::new(res), Op::Div, Box::new(self.power()?));
                 }
                 _ => break,
             };
@@ -204,24 +206,24 @@ impl Parser {
         Ok(res)
     }
 
-    pub fn power(&mut self) -> anyhow::Result<f64> {
+    pub fn power(&mut self) -> anyhow::Result<ASTNode> {
         let mut res = self.factor()?;
 
         let tok = self.peek()?;
 
         if matches!(tok, Token::Exp) {
             self.cusume()?;
-            res = res.powf(self.power()?)
+            res = ASTNode::Binary(Box::new(res), Op::Exp, Box::new(self.power()?));
         }
 
         Ok(res)
     }
 
-    pub fn factor(&mut self) -> anyhow::Result<f64> {
+    pub fn factor(&mut self) -> anyhow::Result<ASTNode> {
         let tok = self.cusume()?;
 
         match tok {
-            Token::Number(num) => Ok(num),
+            Token::Number(num) => Ok(ASTNode::Number(num)),
             Token::LP => {
                 let res = self.expr()?;
 

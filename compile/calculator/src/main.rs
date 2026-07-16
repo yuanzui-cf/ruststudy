@@ -1,5 +1,6 @@
 use crate::parser::Parser;
 
+mod ast;
 mod parser;
 
 fn main() -> anyhow::Result<()> {
@@ -16,7 +17,8 @@ fn main() -> anyhow::Result<()> {
 
         match parser.parse() {
             Ok(res) => {
-                println!("Result: {res}");
+                println!("AST Node: {res:#?}");
+                println!("Result: {}", res.eval());
             }
             Err(e) => {
                 eprintln!("Error: {e}");
