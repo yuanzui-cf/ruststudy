@@ -1,15 +1,27 @@
-//! expr ::= (Token::Neg)? term ((Token::Add | Token::Neg) term)*
-//! term ::= power ((Token::Mul | Token::Div) power)*
-//! power ::= factor (Token::Exp power)?
-//! factor ::= Token::Number | Token::LP expr Token::RP
+// letter ::= [a-zA-Z_]
+// digit ::= [0-9]
+// identifier ::= letter ( letter | digit )*
+// float ::= digit+ ( "." digit* )?
+//
+// expr ::= "-"? term ( ( "+" | "-" ) term )*
+// term ::= power ( ( "*" | "/" ) power )*
+// power ::= factor ( "^" power )?
+// factor ::= identifier | float | "(" expr ")"
+//
+// assignment ::= identifier "=" expr
+//
+// statement ::= ( assignment | expr )? ";"
+//
+// program ::= statement* expr?
 
 use std::{fmt::Display, iter::Peekable, str::Chars, vec::IntoIter};
 
 use crate::ast::{ASTNode, Op};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Number(f64),
+    Float(f64),
+    Identifier(String),
     Add,
     Neg,
     Mul,
@@ -17,18 +29,22 @@ pub enum Token {
     Exp,
     LP,
     RP,
+    Assign,
+    Semi,
     End,
 }
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Token::Number(num) = self {
+        if let Token::Float(num) = self {
             write!(f, "{num}")?;
+        } else if let Token::Identifier(id) = self {
+            write!(f, "{id}")?;
         } else {
             write!(
                 f,
                 "{}",
-                match *self {
+                match self {
                     Token::Add => "+",
                     Token::Neg => "-",
                     Token::Mul => "*",
@@ -36,7 +52,9 @@ impl Display for Token {
                     Token::Exp => "^",
                     Token::LP => "(",
                     Token::RP => ")",
-                    Token::Number(_) | Token::End => "",
+                    Token::Assign => "=",
+                    Token::Semi => ";",
+                    Token::Identifier(_) | Token::Float(_) | Token::End => "",
                 },
             )?;
         }
@@ -45,48 +63,60 @@ impl Display for Token {
     }
 }
 
-pub struct Parser {
-    tokens: Peekable<IntoIter<Token>>,
-}
+impl Token {
+    fn get_float(
+        expr: &mut Peekable<Chars<'_>>,
+        first_chr: char,
+        is_decimal: bool,
+    ) -> anyhow::Result<f64> {
+        let mut is_decimal = is_decimal;
+        let mut res = String::new();
+        res.push(first_chr);
 
-impl Parser {
-    pub fn tokenize(expr: &str) -> anyhow::Result<Self> {
-        let mut tokens = vec![];
-        let mut expr = expr.chars().peekable();
+        while let Some(next) = expr.peek()
+            && (next.is_ascii_digit() || next == &'.')
+        {
+            let Some(chr) = expr.next() else {
+                unreachable!("next is ascii digit");
+            };
 
-        fn get_number(
-            expr: &mut Peekable<Chars<'_>>,
-            first_chr: char,
-            is_decimal: bool,
-        ) -> anyhow::Result<f64> {
-            let mut is_decimal = is_decimal;
-            let mut res = String::new();
-            res.push(first_chr);
-
-            while let Some(next) = expr.peek()
-                && (next.is_ascii_digit() || next == &'.')
-            {
-                let Some(chr) = expr.next() else {
-                    unreachable!("next is ascii digit");
-                };
-
-                if chr == '.' {
-                    if is_decimal {
-                        anyhow::bail!("Invalid syntax `.` found");
-                    } else {
-                        is_decimal = true;
-                    }
+            if chr == '.' {
+                if is_decimal {
+                    anyhow::bail!("Invalid syntax `.` found");
+                } else {
+                    is_decimal = true;
                 }
-
-                res.push(chr);
             }
 
-            let num = res
-                .parse::<f64>()
-                .map_err(|e| anyhow::anyhow!("Failed to parse {res} as 64-bit number: {e}"))?;
-
-            Ok(num)
+            res.push(chr);
         }
+
+        let num = res
+            .parse::<f64>()
+            .map_err(|e| anyhow::anyhow!("Failed to parse {res} as 64-bit number: {e}"))?;
+
+        Ok(num)
+    }
+
+    fn get_identifier(expr: &mut Peekable<Chars<'_>>, first_chr: char) -> String {
+        let mut res = String::from(first_chr);
+
+        while let Some(next) = expr.peek()
+            && (next.is_alphabetic() || next.is_ascii_digit() || next == &'_')
+        {
+            let Some(chr) = expr.next() else {
+                unreachable!("next is match identifier format");
+            };
+
+            res.push(chr);
+        }
+
+        res
+    }
+
+    pub fn tokenize(expr: &str) -> anyhow::Result<Vec<Self>> {
+        let mut tokens = vec![];
+        let mut expr = expr.chars().peekable();
 
         loop {
             let chr = expr.next();
@@ -100,17 +130,39 @@ impl Parser {
                 Some('(') => tokens.push(Token::LP),
                 Some(')') => tokens.push(Token::RP),
                 Some('.') => {
-                    let num = get_number(&mut expr, '.', true)?;
-                    tokens.push(Token::Number(num));
+                    let num = Token::get_float(&mut expr, '.', true)?;
+                    tokens.push(Token::Float(num));
                 }
                 Some(num) if num.is_ascii_digit() => {
-                    let num = get_number(&mut expr, num, false)?;
-                    tokens.push(Token::Number(num));
+                    let num = Token::get_float(&mut expr, num, false)?;
+                    tokens.push(Token::Float(num));
                 }
+                Some('=') => tokens.push(Token::Assign),
                 Some(' ') => {
                     continue;
                 }
+                Some(';') => tokens.push(Token::Semi),
                 Some(other) => {
+                    // if other == 'c' {
+                    //     let mut tmp_expr = expr.clone();
+
+                    //     if tmp_expr.next() == Some('a')
+                    //         && tmp_expr.next() == Some('l')
+                    //         && tmp_expr.next() == Some('c')
+                    //         && tmp_expr.next() == Some(' ')
+                    //     {
+                    //         expr = tmp_expr;
+                    //         tokens.push(Token::Calc);
+                    //         continue;
+                    //     }
+                    // }
+
+                    if other.is_alphabetic() || other == '_' {
+                        let identifier = Token::get_identifier(&mut expr, other);
+                        tokens.push(Token::Identifier(identifier));
+                        continue;
+                    }
+
                     anyhow::bail!("Invalid syntax `{other}` found");
                 }
                 None => {
@@ -120,12 +172,23 @@ impl Parser {
             };
         }
 
-        Ok(Self {
+        Ok(tokens)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Parser {
+    tokens: Peekable<IntoIter<Token>>,
+}
+
+impl Parser {
+    pub fn new(tokens: Vec<Token>) -> Self {
+        Self {
             tokens: tokens.into_iter().peekable(),
-        })
+        }
     }
 
-    pub fn cusume(&mut self) -> anyhow::Result<Token> {
+    pub fn consume(&mut self) -> anyhow::Result<Token> {
         let Some(next_tok) = self.tokens.next() else {
             anyhow::bail!("Token end unexpectedly");
         };
@@ -140,7 +203,7 @@ impl Parser {
     }
 
     pub fn parse(&mut self) -> anyhow::Result<ASTNode> {
-        let res = self.expr()?;
+        let res = self.program()?;
 
         if let next = self.peek()?
             && next != &Token::End
@@ -151,11 +214,61 @@ impl Parser {
         Ok(res)
     }
 
-    pub fn expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn program(&mut self) -> anyhow::Result<ASTNode> {
+        let mut statements: Vec<ASTNode> = Vec::new();
+        let mut expr: Option<Box<ASTNode>> = None;
+
+        while self.peek()? != &Token::End {
+            if self.peek()? == &Token::Semi {
+                self.consume()?;
+                continue;
+            }
+
+            let res = self.assignment()?;
+
+            if self.peek()? == &Token::Semi {
+                self.consume()?;
+                statements.push(res);
+            } else {
+                expr = Some(Box::new(res));
+                break;
+            }
+        }
+
+        Ok(ASTNode::Program(statements, expr))
+    }
+
+    fn assignment(&mut self) -> anyhow::Result<ASTNode> {
+        let mut tmp_toks = self.tokens.clone();
+
+        if tmp_toks.peek().is_some() {
+            if let Some(tok) = tmp_toks.next()
+                && let Token::Identifier(identifier) = tok
+                && let Some(next) = tmp_toks.peek()
+                && matches!(next, Token::Assign)
+            {
+                self.consume()?;
+                self.consume()?;
+
+                let res = self.expr()?;
+
+                Ok(ASTNode::Assignment(
+                    Box::new(ASTNode::Identifier(identifier)),
+                    Box::new(res),
+                ))
+            } else {
+                self.expr()
+            }
+        } else {
+            anyhow::bail!("Token end unexpectedly")
+        }
+    }
+
+    fn expr(&mut self) -> anyhow::Result<ASTNode> {
         let mut neg_flag = false;
 
         if self.peek()? == &Token::Neg {
-            self.cusume()?;
+            self.consume()?;
             neg_flag = true;
         }
 
@@ -170,11 +283,11 @@ impl Parser {
 
             match tok {
                 Token::Add => {
-                    self.cusume()?;
+                    self.consume()?;
                     res = ASTNode::Binary(Box::new(res), Op::Add, Box::new(self.term()?));
                 }
                 Token::Neg => {
-                    self.cusume()?;
+                    self.consume()?;
                     res = ASTNode::Binary(Box::new(res), Op::Neg, Box::new(self.term()?));
                 }
                 _ => break,
@@ -184,7 +297,7 @@ impl Parser {
         Ok(res)
     }
 
-    pub fn term(&mut self) -> anyhow::Result<ASTNode> {
+    fn term(&mut self) -> anyhow::Result<ASTNode> {
         let mut res = self.power()?;
 
         loop {
@@ -192,11 +305,11 @@ impl Parser {
 
             match tok {
                 Token::Mul => {
-                    self.cusume()?;
+                    self.consume()?;
                     res = ASTNode::Binary(Box::new(res), Op::Mul, Box::new(self.power()?));
                 }
                 Token::Div => {
-                    self.cusume()?;
+                    self.consume()?;
                     res = ASTNode::Binary(Box::new(res), Op::Div, Box::new(self.power()?));
                 }
                 _ => break,
@@ -206,31 +319,32 @@ impl Parser {
         Ok(res)
     }
 
-    pub fn power(&mut self) -> anyhow::Result<ASTNode> {
+    fn power(&mut self) -> anyhow::Result<ASTNode> {
         let mut res = self.factor()?;
 
         let tok = self.peek()?;
 
         if matches!(tok, Token::Exp) {
-            self.cusume()?;
+            self.consume()?;
             res = ASTNode::Binary(Box::new(res), Op::Exp, Box::new(self.power()?));
         }
 
         Ok(res)
     }
 
-    pub fn factor(&mut self) -> anyhow::Result<ASTNode> {
-        let tok = self.cusume()?;
+    fn factor(&mut self) -> anyhow::Result<ASTNode> {
+        let tok = self.consume()?;
 
         match tok {
-            Token::Number(num) => Ok(ASTNode::Number(num)),
+            Token::Float(num) => Ok(ASTNode::Float(num)),
+            Token::Identifier(identifier) => Ok(ASTNode::Identifier(identifier)),
             Token::LP => {
                 let res = self.expr()?;
 
                 if self.peek()? != &Token::RP {
                     anyhow::bail!("Expected `)`, but not found");
                 } else {
-                    self.cusume()?;
+                    self.consume()?;
                 }
 
                 Ok(res)
