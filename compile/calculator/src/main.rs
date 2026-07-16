@@ -9,6 +9,8 @@ mod ast;
 mod parser;
 
 fn main() -> anyhow::Result<()> {
+    let mut env: HashMap<String, Value> = HashMap::new();
+
     loop {
         let expr = utils::io::input::input!("Input expr: ", String)?;
 
@@ -26,7 +28,6 @@ fn main() -> anyhow::Result<()> {
 
         match parser.parse() {
             Ok(res) => {
-                let mut env: HashMap<String, Value> = HashMap::new();
                 println!("AST Node: {res:#?}");
 
                 match res.eval(&mut env) {

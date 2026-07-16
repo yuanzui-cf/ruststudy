@@ -46,7 +46,7 @@ pub enum ASTNode {
     Identifier(String),
     Negate(Box<ASTNode>),
     Binary(Box<ASTNode>, Op, Box<ASTNode>),
-    Assignment(Box<ASTNode>, Box<ASTNode>),
+    Assignment(String, Box<ASTNode>),
     Program(Vec<ASTNode>, Option<Box<ASTNode>>),
 }
 
@@ -94,16 +94,9 @@ impl ASTNode {
                 }))
             }
             Self::Assignment(identifier, expr) => {
-                let identifier = match &**identifier {
-                    ASTNode::Identifier(id) => id.clone(),
-                    o => anyhow::bail!(
-                        "Internal Compiler Error: Expected ASTNode::Identifier, but Parser produced: {o:#?}"
-                    ),
-                };
-
                 let res = expr.eval(env)?;
 
-                env.insert(identifier, res);
+                env.insert(identifier.clone(), res);
 
                 Ok(Value::None)
             }

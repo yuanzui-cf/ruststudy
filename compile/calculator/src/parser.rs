@@ -1,7 +1,7 @@
 // letter ::= [a-zA-Z_]
 // digit ::= [0-9]
 // identifier ::= letter ( letter | digit )*
-// float ::= digit+ ( "." digit* )?
+// float ::= digit+ ( "." digit* )? | "." digit+
 //
 // expr ::= "-"? term ( ( "+" | "-" ) term )*
 // term ::= power ( ( "*" | "/" ) power )*
@@ -12,7 +12,7 @@
 //
 // statement ::= ( assignment | expr )? ";"
 //
-// program ::= statement* expr?
+// program ::= statement* ( assignment | expr )?
 
 use std::{fmt::Display, iter::Peekable, str::Chars, vec::IntoIter};
 
@@ -124,8 +124,8 @@ impl Token {
             match chr {
                 Some('+') => tokens.push(Token::Add),
                 Some('-') => tokens.push(Token::Neg),
-                Some('*' | '×') => tokens.push(Token::Mul),
-                Some('/' | '÷') => tokens.push(Token::Div),
+                Some('*') => tokens.push(Token::Mul),
+                Some('/') => tokens.push(Token::Div),
                 Some('^') => tokens.push(Token::Exp),
                 Some('(') => tokens.push(Token::LP),
                 Some(')') => tokens.push(Token::RP),
@@ -138,31 +138,15 @@ impl Token {
                     tokens.push(Token::Float(num));
                 }
                 Some('=') => tokens.push(Token::Assign),
-                Some(' ') => {
+                Some(';') => tokens.push(Token::Semi),
+                Some(other) if other.is_whitespace() => {
                     continue;
                 }
-                Some(';') => tokens.push(Token::Semi),
+                Some(other) if other.is_alphabetic() || other == '_' => {
+                    let identifier = Token::get_identifier(&mut expr, other);
+                    tokens.push(Token::Identifier(identifier));
+                }
                 Some(other) => {
-                    // if other == 'c' {
-                    //     let mut tmp_expr = expr.clone();
-
-                    //     if tmp_expr.next() == Some('a')
-                    //         && tmp_expr.next() == Some('l')
-                    //         && tmp_expr.next() == Some('c')
-                    //         && tmp_expr.next() == Some(' ')
-                    //     {
-                    //         expr = tmp_expr;
-                    //         tokens.push(Token::Calc);
-                    //         continue;
-                    //     }
-                    // }
-
-                    if other.is_alphabetic() || other == '_' {
-                        let identifier = Token::get_identifier(&mut expr, other);
-                        tokens.push(Token::Identifier(identifier));
-                        continue;
-                    }
-
                     anyhow::bail!("Invalid syntax `{other}` found");
                 }
                 None => {
@@ -252,10 +236,7 @@ impl Parser {
 
                 let res = self.expr()?;
 
-                Ok(ASTNode::Assignment(
-                    Box::new(ASTNode::Identifier(identifier)),
-                    Box::new(res),
-                ))
+                Ok(ASTNode::Assignment(identifier, Box::new(res)))
             } else {
                 self.expr()
             }
