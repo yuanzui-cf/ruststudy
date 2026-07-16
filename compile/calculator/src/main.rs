@@ -207,16 +207,11 @@ impl Parser {
     pub fn power(&mut self) -> anyhow::Result<f64> {
         let mut res = self.factor()?;
 
-        loop {
-            let tok = self.peek()?;
+        let tok = self.peek()?;
 
-            match tok {
-                Token::Exp => {
-                    self.cusume()?;
-                    res = res.powf(self.power()?)
-                }
-                _ => break,
-            };
+        if matches!(tok, Token::Exp) {
+            self.cusume()?;
+            res = res.powf(self.power()?)
         }
 
         Ok(res)
