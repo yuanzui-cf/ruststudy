@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "utils",
   "compile/calculator",
+  "compile/tinylang",
 ]
 
 [workspace.package]

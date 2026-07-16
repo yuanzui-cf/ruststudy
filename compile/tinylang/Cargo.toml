@@ -1,0 +1,6 @@
+[package]
+name = "tinylang"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
