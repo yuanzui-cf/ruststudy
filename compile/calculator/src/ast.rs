@@ -5,8 +5,9 @@ use std::{
 };
 
 use crate::{
+    ctx::Context,
     env::Environment,
-    error::{self, Result},
+    error::{self, Error, InternalError, Result},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,10 +149,13 @@ pub enum ASTNode {
     Program(Vec<ASTNode>, Option<Box<ASTNode>>),
     Block(Vec<ASTNode>, Option<Box<ASTNode>>),
     Condition(Box<ASTNode>, Box<ASTNode>, Option<Box<ASTNode>>),
+    Loop(Box<ASTNode>),
+    Break(Option<Box<ASTNode>>),
+    Continue,
 }
 
 impl ASTNode {
-    pub fn eval(&self, env: Rc<RefCell<Environment>>) -> Result<Value> {
+    pub fn eval(&self, env: Rc<RefCell<Environment>>, ctx: Context) -> Result<Value> {
         match self {
             Self::Value(val) => Ok(val.clone()),
             Self::Identifier(identifier) => {
@@ -169,7 +173,7 @@ impl ASTNode {
                     _ => unreachable!(),
                 };
 
-                let left = left.eval(env.clone())?;
+                let left = left.eval(env.clone(), ctx.clone())?;
                 let Value::Bool(l_val) = left else {
                     return Err(error::error!(
                         Type,
@@ -185,7 +189,7 @@ impl ASTNode {
                 } {
                     Ok(Value::Bool(l_val))
                 } else {
-                    let right = right.eval(env.clone())?;
+                    let right = right.eval(env.clone(), ctx)?;
                     let Value::Bool(r_val) = right else {
                         return Err(error::error!(
                             Type,
@@ -198,18 +202,18 @@ impl ASTNode {
                 }
             }
             Self::Binary(node_1, op, node_2) => {
-                let left = node_1.eval(env.clone())?;
-                let right = node_2.eval(env)?;
+                let left = node_1.eval(env.clone(), ctx.clone())?;
+                let right = node_2.eval(env, ctx)?;
 
                 left.apply_binary(op, right)
             }
             Self::Unary(op, node) => {
-                let res = node.eval(env)?;
+                let res = node.eval(env, ctx)?;
 
                 res.apply_unary(op)
             }
             Self::Negate(node) => {
-                let res = node.eval(env)?;
+                let res = node.eval(env, ctx)?;
 
                 Ok(match res {
                     Value::Float(num) => Value::Float(-num),
@@ -223,7 +227,7 @@ impl ASTNode {
             }
             Self::Define(identifier, expr) => {
                 let res = match expr {
-                    Some(expr) => Some(expr.eval(env.clone())?),
+                    Some(expr) => Some(expr.eval(env.clone(), ctx)?),
                     None => None,
                 };
 
@@ -233,7 +237,7 @@ impl ASTNode {
                 Ok(Value::None)
             }
             Self::Assignment(identifier, expr) => {
-                let res = expr.eval(env.clone())?;
+                let res = expr.eval(env.clone(), ctx)?;
 
                 let mut env = env.borrow_mut();
                 env.assign(identifier, res)?;
@@ -242,11 +246,11 @@ impl ASTNode {
             }
             Self::Program(statements, expr) => {
                 for s in statements {
-                    s.eval(env.clone())?;
+                    s.eval(env.clone(), ctx.clone())?;
                 }
 
                 if let Some(expr) = expr {
-                    Ok(expr.eval(env)?)
+                    Ok(expr.eval(env, ctx)?)
                 } else {
                     Ok(Value::None)
                 }
@@ -255,23 +259,23 @@ impl ASTNode {
                 let block_env = Environment::new_child(env);
 
                 for s in statements {
-                    s.eval(block_env.clone())?;
+                    s.eval(block_env.clone(), ctx.clone())?;
                 }
 
                 if let Some(expr) = expr {
-                    Ok(expr.eval(block_env)?)
+                    Ok(expr.eval(block_env, ctx)?)
                 } else {
                     Ok(Value::None)
                 }
             }
             Self::Condition(condition, block, else_expr) => {
-                let res = condition.eval(env.clone())?;
+                let res = condition.eval(env.clone(), ctx.clone())?;
 
                 if let Value::Bool(val) = res {
                     Ok(if val {
-                        block.eval(env)?
+                        block.eval(env, ctx)?
                     } else if let Some(else_expr) = else_expr {
-                        else_expr.eval(env)?
+                        else_expr.eval(env, ctx)?
                     } else {
                         Value::None
                     })
@@ -281,6 +285,47 @@ impl ASTNode {
                         "Expect bool, found {}",
                         res.type_name()
                     ))
+                }
+            }
+            Self::Loop(block) => {
+                let loop_ctx = Context { is_loop: true };
+
+                let res = 'l: loop {
+                    let res = block.eval(env.clone(), loop_ctx.clone());
+
+                    match res {
+                        Ok(_) => Ok(()),
+                        Err(Error::Internal(InternalError::LoopBreak(expr))) => {
+                            if let Some(val) = expr {
+                                break 'l val;
+                            } else {
+                                break 'l Value::None;
+                            }
+                        }
+                        Err(Error::Internal(InternalError::LoopContinue)) => continue,
+                        Err(err) => Err(err),
+                    }?;
+                };
+
+                Ok(res)
+            }
+            Self::Break(expr) => {
+                if !ctx.is_loop {
+                    Err(error::error!(Runtime, "Cannot use break outside a loop"))
+                } else {
+                    let res = match expr {
+                        Some(expr) => Some(expr.eval(env, ctx)?),
+                        None => None,
+                    };
+
+                    Err(error::error!(Internal, InternalError::LoopBreak(res)))
+                }
+            }
+            Self::Continue => {
+                if !ctx.is_loop {
+                    Err(error::error!(Runtime, "Cannot use continue outside a loop"))
+                } else {
+                    Err(error::error!(Internal, InternalError::LoopContinue))
                 }
             }
         }

@@ -16,7 +16,7 @@ add_expr ::= "-"? mul_expr ( ( "+" | "-" ) mul_expr )*
 mul_expr ::= exp_expr ( ( "*" | "/" ) exp_expr )*
 exp_expr ::= not_expr ( "^" exp_expr )?
 not_expr ::= "!"* primary_expr
-primary_expr ::= identifier | block | condition_expr | types | "(" expr ")"
+primary_expr ::= identifier | block | condition_expr | loop_expr | types | "(" expr ")"
 
 define ::= "let" identifier ( "=" expr )?
 assignment ::= identifier "=" expr
@@ -24,7 +24,10 @@ assignment ::= identifier "=" expr
 block ::= "{" statement* expr? "}"
 
 condition_expr ::= "if" expr block ( "else" ( condition_expr | block ) )?
+loop_expr ::= "loop" block
+break ::= "break" expr?
+continue ::= "continue"
 
-statement ::= ( assignment | define | expr )? ";"
+statement ::= ( assignment | define | break | continue | expr )? ";"
 
 program ::= statement* expr?

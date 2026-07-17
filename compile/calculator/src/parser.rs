@@ -30,6 +30,10 @@ pub enum Token {
     Let,
     If,
     Else,
+    Loop,
+    Break,
+    Continue,
+
     End,
 }
 
@@ -55,6 +59,9 @@ impl Display for Token {
                     Token::Let => "let",
                     Token::If => "if",
                     Token::Else => "else",
+                    Token::Loop => "loop",
+                    Token::Break => "break",
+                    Token::Continue => "continue",
                     Token::Op(_) | Token::Identifier(_) | Token::Value(_) | Token::End => "",
                 },
             )?;
@@ -191,6 +198,9 @@ impl Token {
                         "none" => tokens.push(Token::Value(Value::None)),
                         "and" => tokens.push(Token::Op(Op::And)),
                         "or" => tokens.push(Token::Op(Op::Or)),
+                        "loop" => tokens.push(Token::Loop),
+                        "break" => tokens.push(Token::Break),
+                        "continue" => tokens.push(Token::Continue),
                         _ => tokens.push(Token::Identifier(identifier)),
                     }
                 }
@@ -291,6 +301,39 @@ impl Parser {
                             return Err(error::error!(Syntax, "Syntax Error: Expect identifier."));
                         }
                     }
+                    Token::Break => {
+                        self.consume()?;
+
+                        if matches!(self.peek()?, Token::Semi) {
+                            Ok(ASTNode::Break(None))
+                        } else if matches!(self.peek()?, Token::RB | Token::End) {
+                            return Err(error::error!(
+                                Syntax,
+                                "Statement must end with a semicolon ';'"
+                            ));
+                        } else {
+                            let res = self.expr()?;
+
+                            if !matches!(self.peek()?, Token::Semi) {
+                                return Err(error::error!(
+                                    Syntax,
+                                    "Statement must end with a semicolon ';'"
+                                ));
+                            }
+
+                            Ok(ASTNode::Break(Some(Box::new(res))))
+                        }
+                    }
+                    Token::Continue => {
+                        if !matches!(self.peek()?, Token::Semi) {
+                            return Err(error::error!(
+                                Syntax,
+                                "Statement must end with a semicolon ';'"
+                            ));
+                        }
+
+                        Ok(ASTNode::Continue)
+                    }
                     _ => self.assignment_or_expr(),
                 }
             }?;
@@ -333,7 +376,7 @@ impl Parser {
                 self.expr()
             }
         } else {
-            return Err(error::error!(Syntax, "Token end unexpectedly"));
+            Err(error::error!(Syntax, "Token end unexpectedly"))
         }
     }
 
@@ -485,6 +528,7 @@ impl Parser {
             Token::Value(val) => Ok(ASTNode::Value(val)),
             Token::Identifier(identifier) => Ok(ASTNode::Identifier(identifier)),
             Token::If => self.condition_expr(),
+            Token::Loop => self.loop_expr(),
             Token::LB => self.block(),
             Token::LP => {
                 let res = self.expr()?;
@@ -556,5 +600,16 @@ impl Parser {
             Box::new(block),
             else_block,
         ))
+    }
+
+    fn loop_expr(&mut self) -> Result<ASTNode> {
+        if self.peek()? != &Token::LB {
+            return Err(error::error!(Syntax, "Expected `{{`, but not found"));
+        }
+
+        self.consume()?;
+        let block = self.block()?;
+
+        Ok(ASTNode::Loop(Box::new(block)))
     }
 }

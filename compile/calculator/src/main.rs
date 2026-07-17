@@ -1,4 +1,5 @@
 use calclang::{
+    ctx::Context,
     env::Environment,
     parser::{Parser, Token},
 };
@@ -25,7 +26,7 @@ fn main() -> anyhow::Result<()> {
             Ok(res) => {
                 println!("AST Node: {res:#?}");
 
-                match res.eval(env.clone()) {
+                match res.eval(env.clone(), Context::default()) {
                     Ok(res) => println!("Result: {res}"),
                     Err(e) => {
                         eprintln!("Error: {e}")
