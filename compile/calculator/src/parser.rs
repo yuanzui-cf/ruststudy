@@ -1,17 +1,26 @@
 // letter ::= [a-zA-Z_]
 // digit ::= [0-9]
 // identifier ::= letter ( letter | digit )*
-// float ::= digit+ ( "." digit* )? | "." digit+
 //
-// expr ::= "-"? term ( ( "+" | "-" ) term )*
-// term ::= power ( ( "*" | "/" ) power )*
-// power ::= factor ( "^" power )?
-// factor ::= identifier | block | float | "(" expr ")"
+// types ::= float | bool | none
+//
+// float ::= digit+ ( "." digit* )? | "." digit+
+// bool ::= "true" | "false"
+// none ::= "none"
+//
+// expr ::= rel_expr
+// rel_expr ::= add_expr ( ("<" | "<=" | ">" | ">=" | "==" | "!=") add_expr )?
+// add_expr ::= "-"? mul_expr ( ( "+" | "-" ) mul_expr )*
+// mul_expr ::= exp_expr ( ( "*" | "/" ) exp_expr )*
+// exp_expr ::= primary_expr ( "^" exp_expr )?
+// primary_expr ::= identifier | block | condition_expr | types | "(" add_expr ")"
 //
 // define ::= "let" identifier ( "=" expr )?
 // assignment ::= identifier "=" expr
 //
 // block ::= "{" statement* expr? "}"
+//
+// condition_expr ::= "if" expr block ( "else" ( condition_expr | block ) )?
 //
 // statement ::= ( assignment | define | expr )? ";"
 //
@@ -19,43 +28,49 @@
 
 use std::{fmt::Display, iter::Peekable, str::Chars, vec::IntoIter};
 
-use crate::ast::{ASTNode, Op};
+use crate::ast::{ASTNode, Op, Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Float(f64),
     Identifier(String),
-    Add,
-    Neg,
-    Mul,
-    Div,
-    Exp,
+
+    // Types
+    Value(Value),
+
+    // Symbols
+    Op(Op),
+    /// {
     LB,
+    /// }
     RB,
+    /// (
     LP,
+    /// )
     RP,
+    /// =
     Assign,
+    /// ;
     Semi,
+
     Let,
+    If,
+    Else,
     End,
 }
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Token::Float(num) = self {
-            write!(f, "{num}")?;
+        if let Token::Value(val) = self {
+            write!(f, "{val}")?;
         } else if let Token::Identifier(id) = self {
             write!(f, "{id}")?;
+        } else if let Token::Op(op) = self {
+            write!(f, "{op}")?;
         } else {
             write!(
                 f,
                 "{}",
                 match self {
-                    Token::Add => "+",
-                    Token::Neg => "-",
-                    Token::Mul => "*",
-                    Token::Div => "/",
-                    Token::Exp => "^",
                     Token::LB => "{",
                     Token::RB => "}",
                     Token::LP => "(",
@@ -63,7 +78,9 @@ impl Display for Token {
                     Token::Assign => "=",
                     Token::Semi => ";",
                     Token::Let => "let",
-                    Token::Identifier(_) | Token::Float(_) | Token::End => "",
+                    Token::If => "if",
+                    Token::Else => "else",
+                    Token::Op(_) | Token::Identifier(_) | Token::Value(_) | Token::End => "",
                 },
             )?;
         }
@@ -131,34 +148,78 @@ impl Token {
             let chr = expr.next();
 
             match chr {
-                Some('+') => tokens.push(Token::Add),
-                Some('-') => tokens.push(Token::Neg),
-                Some('*') => tokens.push(Token::Mul),
-                Some('/') => tokens.push(Token::Div),
-                Some('^') => tokens.push(Token::Exp),
+                Some('+') => tokens.push(Token::Op(Op::Add)),
+                Some('-') => tokens.push(Token::Op(Op::Sub)),
+                Some('*') => tokens.push(Token::Op(Op::Mul)),
+                Some('/') => tokens.push(Token::Op(Op::Div)),
+                Some('^') => tokens.push(Token::Op(Op::Exp)),
                 Some('{') => tokens.push(Token::LB),
                 Some('}') => tokens.push(Token::RB),
                 Some('(') => tokens.push(Token::LP),
                 Some(')') => tokens.push(Token::RP),
                 Some('.') => {
                     let num = Token::get_float(&mut expr, '.', true)?;
-                    tokens.push(Token::Float(num));
+                    tokens.push(Token::Value(Value::Float(num)));
                 }
                 Some(num) if num.is_ascii_digit() => {
                     let num = Token::get_float(&mut expr, num, false)?;
-                    tokens.push(Token::Float(num));
+                    tokens.push(Token::Value(Value::Float(num)));
                 }
-                Some('=') => tokens.push(Token::Assign),
+                Some('=') => {
+                    if let Some(next) = expr.peek()
+                        && next == &'='
+                    {
+                        expr.next();
+                        tokens.push(Token::Op(Op::Eq))
+                    } else {
+                        tokens.push(Token::Assign)
+                    }
+                }
+                Some('<') => {
+                    if let Some(next) = expr.peek()
+                        && next == &'='
+                    {
+                        expr.next();
+                        tokens.push(Token::Op(Op::Le))
+                    } else {
+                        tokens.push(Token::Op(Op::Lt))
+                    }
+                }
+                Some('>') => {
+                    if let Some(next) = expr.peek()
+                        && next == &'='
+                    {
+                        expr.next();
+                        tokens.push(Token::Op(Op::Ge))
+                    } else {
+                        tokens.push(Token::Op(Op::Gt))
+                    }
+                }
+                Some('!') => {
+                    if let Some(next) = expr.peek()
+                        && next == &'='
+                    {
+                        expr.next();
+                        tokens.push(Token::Op(Op::Neq))
+                    } else {
+                        // TODO
+                        // tokens.push(Token::Not)
+                    }
+                }
                 Some(';') => tokens.push(Token::Semi),
                 Some(other) if other.is_whitespace() => {
                     continue;
                 }
                 Some(other) if other.is_alphabetic() || other == '_' => {
                     let identifier = Token::get_identifier(&mut expr, other);
-                    if identifier == "let" {
-                        tokens.push(Token::Let);
-                    } else {
-                        tokens.push(Token::Identifier(identifier));
+                    match identifier.as_str() {
+                        "let" => tokens.push(Token::Let),
+                        "if" => tokens.push(Token::If),
+                        "else" => tokens.push(Token::Else),
+                        "true" => tokens.push(Token::Value(Value::Bool(true))),
+                        "false" => tokens.push(Token::Value(Value::Bool(false))),
+                        "none" => tokens.push(Token::Value(Value::None)),
+                        _ => tokens.push(Token::Identifier(identifier)),
                     }
                 }
                 Some(other) => {
@@ -301,14 +362,42 @@ impl Parser {
     }
 
     fn expr(&mut self) -> anyhow::Result<ASTNode> {
+        self.rel_expr()
+    }
+
+    fn rel_expr(&mut self) -> anyhow::Result<ASTNode> {
+        let mut res = self.add_expr()?;
+
+        loop {
+            let tok = self.peek()?;
+
+            if matches!(
+                tok,
+                Token::Op(Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::Eq | Op::Neq)
+            ) {
+                let Token::Op(op) = self.consume()? else {
+                    unreachable!("next is op")
+                };
+                res = ASTNode::Binary(Box::new(res), op, Box::new(self.add_expr()?));
+            } else {
+                break;
+            }
+        }
+
+        Ok(res)
+    }
+
+    fn add_expr(&mut self) -> anyhow::Result<ASTNode> {
         let mut neg_flag = false;
 
-        if self.peek()? == &Token::Neg {
+        if let Token::Op(op) = self.peek()?
+            && matches!(op, Op::Sub)
+        {
             self.consume()?;
             neg_flag = true;
         }
 
-        let mut res = self.term()?;
+        let mut res = self.mul_expr()?;
 
         if neg_flag {
             res = ASTNode::Negate(Box::new(res));
@@ -317,79 +406,68 @@ impl Parser {
         loop {
             let tok = self.peek()?;
 
-            match tok {
-                Token::Add => {
-                    self.consume()?;
-                    res = ASTNode::Binary(Box::new(res), Op::Add, Box::new(self.term()?));
-                }
-                Token::Neg => {
-                    self.consume()?;
-                    res = ASTNode::Binary(Box::new(res), Op::Neg, Box::new(self.term()?));
-                }
-                _ => break,
-            };
+            if matches!(tok, Token::Op(Op::Add | Op::Sub)) {
+                let Token::Op(op) = self.consume()? else {
+                    unreachable!("next is op")
+                };
+                res = ASTNode::Binary(Box::new(res), op, Box::new(self.mul_expr()?));
+            } else {
+                break;
+            }
         }
 
         Ok(res)
     }
 
-    fn term(&mut self) -> anyhow::Result<ASTNode> {
-        let mut res = self.power()?;
+    fn mul_expr(&mut self) -> anyhow::Result<ASTNode> {
+        let mut res = self.exp_expr()?;
 
         loop {
             let tok = self.peek()?;
 
-            match tok {
-                Token::Mul => {
-                    self.consume()?;
-                    res = ASTNode::Binary(Box::new(res), Op::Mul, Box::new(self.power()?));
-                }
-                Token::Div => {
-                    self.consume()?;
-                    res = ASTNode::Binary(Box::new(res), Op::Div, Box::new(self.power()?));
-                }
-                _ => break,
-            };
+            if matches!(tok, Token::Op(Op::Mul | Op::Div)) {
+                let Token::Op(op) = self.consume()? else {
+                    unreachable!("next is op")
+                };
+                res = ASTNode::Binary(Box::new(res), op, Box::new(self.exp_expr()?));
+            } else {
+                break;
+            }
         }
 
         Ok(res)
     }
 
-    fn power(&mut self) -> anyhow::Result<ASTNode> {
-        let mut res = self.factor()?;
+    fn exp_expr(&mut self) -> anyhow::Result<ASTNode> {
+        let mut res = self.primary_expr()?;
 
         let tok = self.peek()?;
 
-        if matches!(tok, Token::Exp) {
-            self.consume()?;
-            res = ASTNode::Binary(Box::new(res), Op::Exp, Box::new(self.power()?));
+        if matches!(tok, Token::Op(Op::Exp)) {
+            let Token::Op(op) = self.consume()? else {
+                unreachable!("next is op")
+            };
+            res = ASTNode::Binary(Box::new(res), op, Box::new(self.exp_expr()?));
         }
 
         Ok(res)
     }
 
-    fn factor(&mut self) -> anyhow::Result<ASTNode> {
+    fn primary_expr(&mut self) -> anyhow::Result<ASTNode> {
         let tok = self.consume()?;
 
         match tok {
-            Token::Float(num) => Ok(ASTNode::Float(num)),
+            Token::Value(val) => Ok(ASTNode::Value(val)),
             Token::Identifier(identifier) => Ok(ASTNode::Identifier(identifier)),
-            Token::LB => {
-                let res = self.block()?;
-
-                if self.peek()? != &Token::RB {
-                    anyhow::bail!("Expected `}}`, but not found");
-                } else {
-                    self.consume()?;
-                }
-
-                Ok(res)
-            }
+            Token::If => self.condition_expr(),
+            Token::LB => self.block(),
             Token::LP => {
                 let res = self.expr()?;
 
-                if self.peek()? != &Token::RP {
-                    anyhow::bail!("Expected `)`, but not found");
+                if let next = self.peek()?
+                    && next != &Token::RP
+                {
+                    anyhow::bail!("Expected `)`, found {next}");
                 } else {
                     self.consume()?;
                 }
@@ -408,6 +486,43 @@ impl Parser {
     fn block(&mut self) -> anyhow::Result<ASTNode> {
         let (statements, expr) = self.statement_or_expr(Token::RB)?;
 
+        if let next = self.peek()?
+            && next != &Token::RB
+        {
+            anyhow::bail!("Expected `}}`, found {next}");
+        } else {
+            self.consume()?;
+        }
+
         Ok(ASTNode::Block(statements, expr))
+    }
+
+    fn condition_expr(&mut self) -> anyhow::Result<ASTNode> {
+        let condition = self.expr()?;
+
+        if self.peek()? != &Token::LB {
+            anyhow::bail!("Expected `{{`, but not found");
+        }
+
+        self.consume()?;
+        let block = self.block()?;
+
+        let else_block = if self.peek()? == &Token::Else {
+            self.consume()?;
+
+            Some(Box::new(match self.consume()? {
+                Token::LB => self.block(),
+                Token::If => self.condition_expr(),
+                o => anyhow::bail!("Expected block or condition expr, found {o}"),
+            }?))
+        } else {
+            None
+        };
+
+        Ok(ASTNode::Condition(
+            Box::new(condition),
+            Box::new(block),
+            else_block,
+        ))
     }
 }
