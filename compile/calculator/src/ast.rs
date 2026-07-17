@@ -1,4 +1,6 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{cell::RefCell, fmt::Display, rc::Rc};
+
+use crate::env::Environment;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -52,10 +54,11 @@ pub enum ASTNode {
 }
 
 impl ASTNode {
-    pub fn eval(&self, env: &mut HashMap<String, Value>) -> anyhow::Result<Value> {
+    pub fn eval(&self, env: Rc<RefCell<Environment>>) -> anyhow::Result<Value> {
         match self {
             Self::Float(num) => Ok(Value::Float(*num)),
             Self::Identifier(identifier) => {
+                let env = env.borrow();
                 if let Some(res) = env.get(identifier) {
                     Ok(res.clone())
                 } else {
@@ -73,8 +76,8 @@ impl ASTNode {
                 })
             }
             Self::Binary(node_1, op, node_2) => {
-                let node_1 = node_1.eval(env)?;
-                let node_2 = node_2.eval(env)?;
+                let node_1 = node_1.eval(env.clone())?;
+                let node_2 = node_2.eval(env.clone())?;
 
                 let left = match node_1 {
                     Value::Float(num) => num,
@@ -96,32 +99,26 @@ impl ASTNode {
             }
             Self::Define(identifier, expr) => {
                 let res = match expr {
-                    Some(expr) => expr.eval(env)?,
-                    None => Value::None,
+                    Some(expr) => Some(expr.eval(env.clone())?),
+                    None => None,
                 };
 
-                if env.contains_key(identifier) {
-                    anyhow::bail!("NameError: name '{identifier}' is already defined")
-                } else {
-                    env.insert(identifier.clone(), res);
-                }
+                let mut env = env.borrow_mut();
+                env.define(identifier, res)?;
 
                 Ok(Value::None)
             }
             Self::Assignment(identifier, expr) => {
-                let res = expr.eval(env)?;
+                let res = expr.eval(env.clone())?;
 
-                if env.contains_key(identifier) {
-                    env.insert(identifier.clone(), res);
-                } else {
-                    anyhow::bail!("NameError: name '{identifier}' is not defined")
-                }
+                let mut env = env.borrow_mut();
+                env.assign(identifier, res)?;
 
                 Ok(Value::None)
             }
             Self::Program(statements, expr) => {
                 for s in statements {
-                    s.eval(env)?;
+                    s.eval(env.clone())?;
                 }
 
                 if let Some(expr) = expr {

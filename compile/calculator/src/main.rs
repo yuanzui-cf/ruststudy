@@ -1,15 +1,14 @@
-use std::collections::HashMap;
-
 use crate::{
-    ast::Value,
+    env::Environment,
     parser::{Parser, Token},
 };
 
 mod ast;
+mod env;
 mod parser;
 
 fn main() -> anyhow::Result<()> {
-    let mut env: HashMap<String, Value> = HashMap::new();
+    let mut env = Environment::new();
 
     loop {
         let expr = utils::io::input::input!("Input expr: ", String)?;
@@ -30,7 +29,7 @@ fn main() -> anyhow::Result<()> {
             Ok(res) => {
                 println!("AST Node: {res:#?}");
 
-                match res.eval(&mut env) {
+                match res.eval(env.clone()) {
                     Ok(res) => println!("Result: {res}"),
                     Err(e) => {
                         eprintln!("Error: {e}")
