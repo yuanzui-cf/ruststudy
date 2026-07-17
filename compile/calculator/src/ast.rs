@@ -46,6 +46,7 @@ pub enum ASTNode {
     Identifier(String),
     Negate(Box<ASTNode>),
     Binary(Box<ASTNode>, Op, Box<ASTNode>),
+    Define(String, Option<Box<ASTNode>>),
     Assignment(String, Box<ASTNode>),
     Program(Vec<ASTNode>, Option<Box<ASTNode>>),
 }
@@ -93,10 +94,28 @@ impl ASTNode {
                     Op::Exp => left.powf(right),
                 }))
             }
+            Self::Define(identifier, expr) => {
+                let res = match expr {
+                    Some(expr) => expr.eval(env)?,
+                    None => Value::None,
+                };
+
+                if env.contains_key(identifier) {
+                    anyhow::bail!("NameError: name '{identifier}' is already defined")
+                } else {
+                    env.insert(identifier.clone(), res);
+                }
+
+                Ok(Value::None)
+            }
             Self::Assignment(identifier, expr) => {
                 let res = expr.eval(env)?;
 
-                env.insert(identifier.clone(), res);
+                if env.contains_key(identifier) {
+                    env.insert(identifier.clone(), res);
+                } else {
+                    anyhow::bail!("NameError: name '{identifier}' is not defined")
+                }
 
                 Ok(Value::None)
             }
