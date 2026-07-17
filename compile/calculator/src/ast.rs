@@ -46,6 +46,7 @@ impl Value {
                 Op::Ge => Ok(Self::Bool(l >= r)),
                 Op::Eq => Ok(Self::Bool(l == r)),
                 Op::Neq => Ok(Self::Bool(l != r)),
+                _ => anyhow::bail!("TypeError: Cannot apply `{op}` on float and float",),
             },
             (l, r) if l.type_name() == r.type_name() => match op {
                 Op::Eq => Ok(Self::Bool(l == r)),
@@ -61,6 +62,16 @@ impl Value {
                 l.type_name(),
                 r.type_name()
             ),
+        }
+    }
+
+    pub fn apply_unary(self, op: &Op) -> anyhow::Result<Self> {
+        match self {
+            Self::Bool(val) => match op {
+                Op::Not => Ok(Self::Bool(!val)),
+                _ => anyhow::bail!("TypeError: Cannot apply unary `{op}` on bool"),
+            },
+            o => anyhow::bail!("TypeError: Cannot apply unary `{op}` to {}", o.type_name()),
         }
     }
 }
@@ -79,6 +90,8 @@ pub enum Op {
     Ge,
     Eq,
     Neq,
+
+    Not,
 }
 
 impl Display for Op {
@@ -98,6 +111,7 @@ impl Display for Op {
                 Self::Ge => ">=",
                 Self::Eq => "==",
                 Self::Neq => "!=",
+                Self::Not => "!",
             }
         )
     }
@@ -109,6 +123,7 @@ pub enum ASTNode {
     Identifier(String),
     Negate(Box<ASTNode>),
     Binary(Box<ASTNode>, Op, Box<ASTNode>),
+    Unary(Op, Box<ASTNode>),
     Define(String, Option<Box<ASTNode>>),
     Assignment(String, Box<ASTNode>),
     Program(Vec<ASTNode>, Option<Box<ASTNode>>),
@@ -134,7 +149,7 @@ impl ASTNode {
                 Ok(match res {
                     Value::Float(num) => Value::Float(-num),
                     o => anyhow::bail!(
-                        "TypeError: Cannot apply unary negation '-' to a non-numeric value. Expected Float, but found: {o}"
+                        "TypeError: Cannot negate a non-numeric value. Expected Float, but found: {o}"
                     ),
                 })
             }
@@ -143,6 +158,11 @@ impl ASTNode {
                 let right = node_2.eval(env)?;
 
                 left.apply_binary(op, right)
+            }
+            Self::Unary(op, node) => {
+                let res = node.eval(env)?;
+
+                res.apply_unary(op)
             }
             Self::Define(identifier, expr) => {
                 let res = match expr {

@@ -12,7 +12,8 @@
 // rel_expr ::= add_expr ( ("<" | "<=" | ">" | ">=" | "==" | "!=") add_expr )?
 // add_expr ::= "-"? mul_expr ( ( "+" | "-" ) mul_expr )*
 // mul_expr ::= exp_expr ( ( "*" | "/" ) exp_expr )*
-// exp_expr ::= primary_expr ( "^" exp_expr )?
+// exp_expr ::= not_expr ( "^" exp_expr )?
+// not_expr ::= "!"* primary_expr
 // primary_expr ::= identifier | block | condition_expr | types | "(" add_expr ")"
 //
 // define ::= "let" identifier ( "=" expr )?
@@ -202,8 +203,7 @@ impl Token {
                         expr.next();
                         tokens.push(Token::Op(Op::Neq))
                     } else {
-                        // TODO
-                        // tokens.push(Token::Not)
+                        tokens.push(Token::Op(Op::Not))
                     }
                 }
                 Some(';') => tokens.push(Token::Semi),
@@ -439,7 +439,7 @@ impl Parser {
     }
 
     fn exp_expr(&mut self) -> anyhow::Result<ASTNode> {
-        let mut res = self.primary_expr()?;
+        let mut res = self.not_expr()?;
 
         let tok = self.peek()?;
 
@@ -451,6 +451,25 @@ impl Parser {
         }
 
         Ok(res)
+    }
+
+    fn not_expr(&mut self) -> anyhow::Result<ASTNode> {
+        let mut not = false;
+
+        while let tok = self.peek()?
+            && matches!(tok, Token::Op(Op::Not))
+        {
+            self.consume()?;
+            not = !not;
+        }
+
+        let res = self.primary_expr()?;
+
+        Ok(if not {
+            ASTNode::Unary(Op::Not, Box::new(res))
+        } else {
+            res
+        })
     }
 
     fn primary_expr(&mut self) -> anyhow::Result<ASTNode> {
