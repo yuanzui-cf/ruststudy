@@ -6,10 +6,12 @@
 // expr ::= "-"? term ( ( "+" | "-" ) term )*
 // term ::= power ( ( "*" | "/" ) power )*
 // power ::= factor ( "^" power )?
-// factor ::= identifier | float | "(" expr ")"
+// factor ::= identifier | block | float | "(" expr ")"
 //
 // define ::= "let" identifier ( "=" expr )?
 // assignment ::= identifier "=" expr
+//
+// block ::= "{" statement* expr? "}"
 //
 // statement ::= ( assignment | define | expr )? ";"
 //
@@ -28,6 +30,8 @@ pub enum Token {
     Mul,
     Div,
     Exp,
+    LB,
+    RB,
     LP,
     RP,
     Assign,
@@ -52,6 +56,8 @@ impl Display for Token {
                     Token::Mul => "*",
                     Token::Div => "/",
                     Token::Exp => "^",
+                    Token::LB => "{",
+                    Token::RB => "}",
                     Token::LP => "(",
                     Token::RP => ")",
                     Token::Assign => "=",
@@ -130,6 +136,8 @@ impl Token {
                 Some('*') => tokens.push(Token::Mul),
                 Some('/') => tokens.push(Token::Div),
                 Some('^') => tokens.push(Token::Exp),
+                Some('{') => tokens.push(Token::LB),
+                Some('}') => tokens.push(Token::RB),
                 Some('(') => tokens.push(Token::LP),
                 Some(')') => tokens.push(Token::RP),
                 Some('.') => {
@@ -206,16 +214,52 @@ impl Parser {
     }
 
     fn program(&mut self) -> anyhow::Result<ASTNode> {
+        let (statements, expr) = self.statement_or_expr(Token::End)?;
+
+        Ok(ASTNode::Program(statements, expr))
+    }
+
+    fn statement_or_expr(
+        &mut self,
+        end_tok: Token,
+    ) -> anyhow::Result<(Vec<ASTNode>, Option<Box<ASTNode>>)> {
         let mut statements: Vec<ASTNode> = Vec::new();
         let mut expr: Option<Box<ASTNode>> = None;
 
-        while self.peek()? != &Token::End {
+        while self.peek()? != &end_tok {
             if self.peek()? == &Token::Semi {
                 self.consume()?;
                 continue;
             }
 
-            let res = self.statement_or_expr()?;
+            let res = {
+                let tok = self.peek()?;
+                match tok {
+                    Token::Let => {
+                        self.consume()?;
+                        if let Token::Identifier(identifier) = self.consume()? {
+                            let mut expr: Option<Box<ASTNode>> = None;
+
+                            if matches!(self.peek()?, Token::Assign) {
+                                self.consume()?;
+                                let res = self.expr()?;
+                                expr = Some(Box::new(res));
+                            }
+
+                            if !matches!(self.peek()?, Token::Semi) {
+                                anyhow::bail!(
+                                    "Syntax Error: Statement must end with a semicolon ';'"
+                                );
+                            }
+
+                            Ok(ASTNode::Define(identifier, expr))
+                        } else {
+                            anyhow::bail!("Syntax Error: Expect identifier.");
+                        }
+                    }
+                    _ => self.assignment_or_expr(),
+                }
+            }?;
 
             if self.peek()? == &Token::Semi {
                 self.consume()?;
@@ -226,34 +270,7 @@ impl Parser {
             }
         }
 
-        Ok(ASTNode::Program(statements, expr))
-    }
-
-    fn statement_or_expr(&mut self) -> anyhow::Result<ASTNode> {
-        let tok = self.peek()?;
-        if matches!(tok, Token::Let) {
-            self.consume()?;
-
-            if let Token::Identifier(identifier) = self.consume()? {
-                let mut expr: Option<Box<ASTNode>> = None;
-
-                if matches!(self.peek()?, Token::Assign) {
-                    self.consume()?;
-                    let res = self.expr()?;
-                    expr = Some(Box::new(res));
-                }
-
-                if !matches!(self.peek()?, Token::Semi) {
-                    anyhow::bail!("Syntax Error: Statement must end with a semicolon ';'");
-                }
-
-                Ok(ASTNode::Define(identifier, expr))
-            } else {
-                anyhow::bail!("Syntax Error: Expect identifier.");
-            }
-        } else {
-            self.assignment_or_expr()
-        }
+        Ok((statements, expr))
     }
 
     fn assignment_or_expr(&mut self) -> anyhow::Result<ASTNode> {
@@ -357,6 +374,17 @@ impl Parser {
         match tok {
             Token::Float(num) => Ok(ASTNode::Float(num)),
             Token::Identifier(identifier) => Ok(ASTNode::Identifier(identifier)),
+            Token::LB => {
+                let res = self.block()?;
+
+                if self.peek()? != &Token::RB {
+                    anyhow::bail!("Expected `}}`, but not found");
+                } else {
+                    self.consume()?;
+                }
+
+                Ok(res)
+            }
             Token::LP => {
                 let res = self.expr()?;
 
@@ -375,5 +403,11 @@ impl Parser {
             }
             _ => anyhow::bail!("Expected a number or an expression, but found `{tok}`"),
         }
+    }
+
+    fn block(&mut self) -> anyhow::Result<ASTNode> {
+        let (statements, expr) = self.statement_or_expr(Token::RB)?;
+
+        Ok(ASTNode::Block(statements, expr))
     }
 }

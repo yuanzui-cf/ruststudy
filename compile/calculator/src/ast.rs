@@ -51,6 +51,7 @@ pub enum ASTNode {
     Define(String, Option<Box<ASTNode>>),
     Assignment(String, Box<ASTNode>),
     Program(Vec<ASTNode>, Option<Box<ASTNode>>),
+    Block(Vec<ASTNode>, Option<Box<ASTNode>>),
 }
 
 impl ASTNode {
@@ -77,7 +78,7 @@ impl ASTNode {
             }
             Self::Binary(node_1, op, node_2) => {
                 let node_1 = node_1.eval(env.clone())?;
-                let node_2 = node_2.eval(env.clone())?;
+                let node_2 = node_2.eval(env)?;
 
                 let left = match node_1 {
                     Value::Float(num) => num,
@@ -123,6 +124,19 @@ impl ASTNode {
 
                 if let Some(expr) = expr {
                     Ok(expr.eval(env)?)
+                } else {
+                    Ok(Value::None)
+                }
+            }
+            Self::Block(statements, expr) => {
+                let block_env = Environment::new_child(env);
+
+                for s in statements {
+                    s.eval(block_env.clone())?;
+                }
+
+                if let Some(expr) = expr {
+                    Ok(expr.eval(block_env)?)
                 } else {
                     Ok(Value::None)
                 }

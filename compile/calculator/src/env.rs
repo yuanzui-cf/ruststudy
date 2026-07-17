@@ -2,6 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::ast::Value;
 
+#[derive(Debug)]
 pub struct Environment {
     store: HashMap<String, Value>,
     parent: Option<Rc<RefCell<Environment>>>,

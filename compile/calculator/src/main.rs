@@ -8,7 +8,7 @@ mod env;
 mod parser;
 
 fn main() -> anyhow::Result<()> {
-    let mut env = Environment::new();
+    let env = Environment::new();
 
     loop {
         let expr = utils::io::input::input!("Input expr: ", String)?;
@@ -35,6 +35,9 @@ fn main() -> anyhow::Result<()> {
                         eprintln!("Error: {e}")
                     }
                 }
+
+                let env = env.borrow();
+                println!("Environment: {env:#?}");
             }
             Err(e) => {
                 eprintln!("Error: {e}");
