@@ -4,7 +4,10 @@ use std::{
     rc::Rc,
 };
 
-use crate::env::Environment;
+use crate::{
+    env::Environment,
+    error::{self, Result},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -32,7 +35,7 @@ impl Value {
         }
     }
 
-    pub fn apply_binary(self, op: &Op, other: Self) -> anyhow::Result<Self> {
+    pub fn apply_binary(self, op: &Op, other: Self) -> Result<Self> {
         match (self, other) {
             (Self::Float(l), Self::Float(r)) => match op {
                 Op::Add => Ok(Self::Float(l + r)),
@@ -46,32 +49,41 @@ impl Value {
                 Op::Ge => Ok(Self::Bool(l >= r)),
                 Op::Eq => Ok(Self::Bool(l == r)),
                 Op::Neq => Ok(Self::Bool(l != r)),
-                _ => anyhow::bail!("TypeError: Cannot apply `{op}` on float and float",),
+                _ => Err(error::error!(
+                    Type,
+                    "Cannot apply `{op}` on float and float",
+                )),
             },
             (l, r) if l.type_name() == r.type_name() => match op {
                 Op::Eq => Ok(Self::Bool(l == r)),
                 Op::Neq => Ok(Self::Bool(l != r)),
-                _ => anyhow::bail!(
-                    "TypeError: Cannot apply `{op}` on {} and {}",
+                _ => Err(error::error!(
+                    Type,
+                    "Cannot apply `{op}` on {} and {}",
                     l.type_name(),
                     r.type_name()
-                ),
+                )),
             },
-            (l, r) => anyhow::bail!(
-                "TypeError: Cannot apply `{op}` between {} and {}",
+            (l, r) => Err(error::error!(
+                Type,
+                "Cannot apply `{op}` between {} and {}",
                 l.type_name(),
                 r.type_name()
-            ),
+            )),
         }
     }
 
-    pub fn apply_unary(self, op: &Op) -> anyhow::Result<Self> {
+    pub fn apply_unary(self, op: &Op) -> Result<Self> {
         match self {
             Self::Bool(val) => match op {
                 Op::Not => Ok(Self::Bool(!val)),
-                _ => anyhow::bail!("TypeError: Cannot apply unary `{op}` on bool"),
+                _ => Err(error::error!(Type, "Cannot apply unary `{op}` on bool")),
             },
-            o => anyhow::bail!("TypeError: Cannot apply unary `{op}` to {}", o.type_name()),
+            o => Err(error::error!(
+                Type,
+                "Cannot apply unary `{op}` to {}",
+                o.type_name()
+            )),
         }
     }
 }
@@ -139,7 +151,7 @@ pub enum ASTNode {
 }
 
 impl ASTNode {
-    pub fn eval(&self, env: Rc<RefCell<Environment>>) -> anyhow::Result<Value> {
+    pub fn eval(&self, env: Rc<RefCell<Environment>>) -> Result<Value> {
         match self {
             Self::Value(val) => Ok(val.clone()),
             Self::Identifier(identifier) => {
@@ -147,7 +159,7 @@ impl ASTNode {
                 if let Some(res) = env.get(identifier) {
                     Ok(res.clone())
                 } else {
-                    anyhow::bail!("NameError: name '{identifier}' is not defined")
+                    Err(error::error!(Name, "name '{identifier}' is not defined"))
                 }
             }
             Self::And(left, right) | Self::Or(left, right) => {
@@ -159,10 +171,11 @@ impl ASTNode {
 
                 let left = left.eval(env.clone())?;
                 let Value::Bool(l_val) = left else {
-                    anyhow::bail!(
-                        "TypeError: Cannot apply logical operator `{op}` on non-boolean operand '{}'",
+                    return Err(error::error!(
+                        Type,
+                        "Cannot apply logical operator `{op}` on non-boolean operand '{}'",
                         left.type_name()
-                    );
+                    ));
                 };
 
                 if match self {
@@ -174,10 +187,11 @@ impl ASTNode {
                 } else {
                     let right = right.eval(env.clone())?;
                     let Value::Bool(r_val) = right else {
-                        anyhow::bail!(
-                            "TypeError: Cannot apply logical operator `{op}` on non-boolean operand '{}'",
+                        return Err(error::error!(
+                            Type,
+                            "Cannot apply logical operator `{op}` on non-boolean operand '{}'",
                             right.type_name()
-                        );
+                        ));
                     };
 
                     Ok(Value::Bool(r_val))
@@ -199,9 +213,12 @@ impl ASTNode {
 
                 Ok(match res {
                     Value::Float(num) => Value::Float(-num),
-                    o => anyhow::bail!(
-                        "TypeError: Cannot negate a non-numeric value. Expected Float, but found: {o}"
-                    ),
+                    o => {
+                        return Err(error::error!(
+                            Type,
+                            "Cannot negate a non-numeric value. Expected Float, but found: {o}"
+                        ));
+                    }
                 })
             }
             Self::Define(identifier, expr) => {
@@ -259,7 +276,11 @@ impl ASTNode {
                         Value::None
                     })
                 } else {
-                    anyhow::bail!("Expect bool, found {}", res.type_name())
+                    Err(error::error!(
+                        Type,
+                        "Expect bool, found {}",
+                        res.type_name()
+                    ))
                 }
             }
         }

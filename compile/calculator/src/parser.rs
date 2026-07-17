@@ -1,37 +1,9 @@
-// letter ::= [a-zA-Z_]
-// digit ::= [0-9]
-// identifier ::= letter ( letter | digit )*
-//
-// types ::= float | bool | none
-//
-// float ::= digit+ ( "." digit* )? | "." digit+
-// bool ::= "true" | "false"
-// none ::= "none"
-//
-// expr ::= or_expr
-// or_expr ::= and_expr ( "or" and_expr )*
-// and_expr ::= rel_expr ( "and" rel_expr )*
-// rel_expr ::= add_expr ( ("<" | "<=" | ">" | ">=" | "==" | "!=") add_expr )?
-// add_expr ::= "-"? mul_expr ( ( "+" | "-" ) mul_expr )*
-// mul_expr ::= exp_expr ( ( "*" | "/" ) exp_expr )*
-// exp_expr ::= not_expr ( "^" exp_expr )?
-// not_expr ::= "!"* primary_expr
-// primary_expr ::= identifier | block | condition_expr | types | "(" expr ")"
-//
-// define ::= "let" identifier ( "=" expr )?
-// assignment ::= identifier "=" expr
-//
-// block ::= "{" statement* expr? "}"
-//
-// condition_expr ::= "if" expr block ( "else" ( condition_expr | block ) )?
-//
-// statement ::= ( assignment | define | expr )? ";"
-//
-// program ::= statement* expr?
-
 use std::{fmt::Display, iter::Peekable, str::Chars, vec::IntoIter};
 
-use crate::ast::{ASTNode, Op, Value};
+use crate::{
+    ast::{ASTNode, Op, Value},
+    error::{self, Result},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -93,11 +65,7 @@ impl Display for Token {
 }
 
 impl Token {
-    fn get_float(
-        expr: &mut Peekable<Chars<'_>>,
-        first_chr: char,
-        is_decimal: bool,
-    ) -> anyhow::Result<f64> {
+    fn get_float(expr: &mut Peekable<Chars<'_>>, first_chr: char, is_decimal: bool) -> Result<f64> {
         let mut is_decimal = is_decimal;
         let mut res = String::new();
         res.push(first_chr);
@@ -111,7 +79,7 @@ impl Token {
 
             if chr == '.' {
                 if is_decimal {
-                    anyhow::bail!("Invalid syntax `.` found");
+                    return Err(error::error!(Syntax, "Invalid syntax `.` found"));
                 } else {
                     is_decimal = true;
                 }
@@ -122,7 +90,7 @@ impl Token {
 
         let num = res
             .parse::<f64>()
-            .map_err(|e| anyhow::anyhow!("Failed to parse {res} as 64-bit number: {e}"))?;
+            .map_err(|e| error::error!(Syntax, "Failed to parse {res} as 64-bit number: {e}"))?;
 
         Ok(num)
     }
@@ -143,7 +111,7 @@ impl Token {
         res
     }
 
-    pub fn tokenize(expr: &str) -> anyhow::Result<Vec<Self>> {
+    pub fn tokenize(expr: &str) -> Result<Vec<Self>> {
         let mut tokens = vec![];
         let mut expr = expr.chars().peekable();
 
@@ -227,7 +195,7 @@ impl Token {
                     }
                 }
                 Some(other) => {
-                    anyhow::bail!("Invalid syntax `{other}` found");
+                    return Err(error::error!(Syntax, "Invalid syntax `{other}` found"));
                 }
                 None => {
                     tokens.push(Token::End);
@@ -252,33 +220,33 @@ impl Parser {
         }
     }
 
-    pub fn consume(&mut self) -> anyhow::Result<Token> {
+    pub fn consume(&mut self) -> Result<Token> {
         let Some(next_tok) = self.tokens.next() else {
-            anyhow::bail!("Token end unexpectedly");
+            return Err(error::error!(Syntax, "Token end unexpectedly"));
         };
 
         Ok(next_tok)
     }
 
-    pub fn peek(&mut self) -> anyhow::Result<&Token> {
+    pub fn peek(&mut self) -> Result<&Token> {
         self.tokens
             .peek()
-            .ok_or_else(|| anyhow::anyhow!("Token end unexpectedly"))
+            .ok_or_else(|| error::error!(Syntax, "Token end unexpectedly"))
     }
 
-    pub fn parse(&mut self) -> anyhow::Result<ASTNode> {
+    pub fn parse(&mut self) -> Result<ASTNode> {
         let res = self.program()?;
 
         if let next = self.peek()?
             && next != &Token::End
         {
-            anyhow::bail!("Unexpected trailing token `{next}`.");
+            return Err(error::error!(Syntax, "Unexpected trailing token `{next}`."));
         }
 
         Ok(res)
     }
 
-    fn program(&mut self) -> anyhow::Result<ASTNode> {
+    fn program(&mut self) -> Result<ASTNode> {
         let (statements, expr) = self.statement_or_expr(Token::End)?;
 
         Ok(ASTNode::Program(statements, expr))
@@ -287,7 +255,7 @@ impl Parser {
     fn statement_or_expr(
         &mut self,
         end_tok: Token,
-    ) -> anyhow::Result<(Vec<ASTNode>, Option<Box<ASTNode>>)> {
+    ) -> Result<(Vec<ASTNode>, Option<Box<ASTNode>>)> {
         let mut statements: Vec<ASTNode> = Vec::new();
         let mut expr: Option<Box<ASTNode>> = None;
 
@@ -312,14 +280,15 @@ impl Parser {
                             }
 
                             if !matches!(self.peek()?, Token::Semi) {
-                                anyhow::bail!(
-                                    "Syntax Error: Statement must end with a semicolon ';'"
-                                );
+                                return Err(error::error!(
+                                    Syntax,
+                                    "Statement must end with a semicolon ';'"
+                                ));
                             }
 
                             Ok(ASTNode::Define(identifier, expr))
                         } else {
-                            anyhow::bail!("Syntax Error: Expect identifier.");
+                            return Err(error::error!(Syntax, "Syntax Error: Expect identifier."));
                         }
                     }
                     _ => self.assignment_or_expr(),
@@ -338,7 +307,7 @@ impl Parser {
         Ok((statements, expr))
     }
 
-    fn assignment_or_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn assignment_or_expr(&mut self) -> Result<ASTNode> {
         let mut tmp_toks = self.tokens.clone();
 
         if tmp_toks.peek().is_some() {
@@ -353,7 +322,10 @@ impl Parser {
                 let res = self.expr()?;
 
                 if !matches!(self.peek()?, Token::Semi) {
-                    anyhow::bail!("Syntax Error: Statement must end with a semicolon ';'");
+                    return Err(error::error!(
+                        Syntax,
+                        "Statement must end with a semicolon ';'"
+                    ));
                 }
 
                 Ok(ASTNode::Assignment(identifier, Box::new(res)))
@@ -361,15 +333,15 @@ impl Parser {
                 self.expr()
             }
         } else {
-            anyhow::bail!("Token end unexpectedly")
+            return Err(error::error!(Syntax, "Token end unexpectedly"));
         }
     }
 
-    fn expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn expr(&mut self) -> Result<ASTNode> {
         self.or_expr()
     }
 
-    fn or_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn or_expr(&mut self) -> Result<ASTNode> {
         let mut res = self.and_expr()?;
 
         loop {
@@ -386,7 +358,7 @@ impl Parser {
         Ok(res)
     }
 
-    fn and_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn and_expr(&mut self) -> Result<ASTNode> {
         let mut res = self.rel_expr()?;
 
         loop {
@@ -403,7 +375,7 @@ impl Parser {
         Ok(res)
     }
 
-    fn rel_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn rel_expr(&mut self) -> Result<ASTNode> {
         let mut res = self.add_expr()?;
 
         let tok = self.peek()?;
@@ -421,7 +393,7 @@ impl Parser {
         Ok(res)
     }
 
-    fn add_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn add_expr(&mut self) -> Result<ASTNode> {
         let mut neg_flag = false;
 
         if let Token::Op(op) = self.peek()?
@@ -453,7 +425,7 @@ impl Parser {
         Ok(res)
     }
 
-    fn mul_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn mul_expr(&mut self) -> Result<ASTNode> {
         let mut res = self.exp_expr()?;
 
         loop {
@@ -472,7 +444,7 @@ impl Parser {
         Ok(res)
     }
 
-    fn exp_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn exp_expr(&mut self) -> Result<ASTNode> {
         let mut res = self.not_expr()?;
 
         let tok = self.peek()?;
@@ -487,7 +459,7 @@ impl Parser {
         Ok(res)
     }
 
-    fn not_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn not_expr(&mut self) -> Result<ASTNode> {
         let mut not = false;
 
         while let tok = self.peek()?
@@ -506,7 +478,7 @@ impl Parser {
         })
     }
 
-    fn primary_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn primary_expr(&mut self) -> Result<ASTNode> {
         let tok = self.consume()?;
 
         match tok {
@@ -520,29 +492,31 @@ impl Parser {
                 if let next = self.peek()?
                     && next != &Token::RP
                 {
-                    anyhow::bail!("Expected `)`, found {next}");
+                    return Err(error::error!(Syntax, "Expected `)`, found {next}"));
                 } else {
                     self.consume()?;
                 }
 
                 Ok(res)
             }
-            Token::End => {
-                anyhow::bail!(
-                    "Expected a number or an expression, but reached the end of the expression"
-                );
-            }
-            _ => anyhow::bail!("Expected a number or an expression, but found `{tok}`"),
+            Token::End => Err(error::error!(
+                Syntax,
+                "Expected a number or an expression, but reached the end of the expression"
+            )),
+            _ => Err(error::error!(
+                Syntax,
+                "Expected a number or an expression, but found `{tok}`"
+            )),
         }
     }
 
-    fn block(&mut self) -> anyhow::Result<ASTNode> {
+    fn block(&mut self) -> Result<ASTNode> {
         let (statements, expr) = self.statement_or_expr(Token::RB)?;
 
         if let next = self.peek()?
             && next != &Token::RB
         {
-            anyhow::bail!("Expected `}}`, found {next}");
+            return Err(error::error!(Syntax, "Expected `}}`, found {next}"));
         } else {
             self.consume()?;
         }
@@ -550,11 +524,11 @@ impl Parser {
         Ok(ASTNode::Block(statements, expr))
     }
 
-    fn condition_expr(&mut self) -> anyhow::Result<ASTNode> {
+    fn condition_expr(&mut self) -> Result<ASTNode> {
         let condition = self.expr()?;
 
         if self.peek()? != &Token::LB {
-            anyhow::bail!("Expected `{{`, but not found");
+            return Err(error::error!(Syntax, "Expected `{{`, but not found"));
         }
 
         self.consume()?;
@@ -566,7 +540,12 @@ impl Parser {
             Some(Box::new(match self.consume()? {
                 Token::LB => self.block(),
                 Token::If => self.condition_expr(),
-                o => anyhow::bail!("Expected block or condition expr, found {o}"),
+                o => {
+                    return Err(error::error!(
+                        Syntax,
+                        "Expected block or condition expr, found {o}"
+                    ));
+                }
             }?))
         } else {
             None

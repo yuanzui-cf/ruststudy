@@ -3,7 +3,12 @@ name = "calculator"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+name = "calclang"
+path = "src/lib.rs"
+
 [dependencies]
 anyhow.workspace = true
+thiserror.workspace = true
 
 utils.workspace = true

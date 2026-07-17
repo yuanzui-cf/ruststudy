@@ -1,6 +1,9 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::ast::Value;
+use crate::{
+    ast::Value,
+    error::{self, Result},
+};
 
 #[derive(Debug)]
 pub struct Environment {
@@ -34,9 +37,9 @@ impl Environment {
         }
     }
 
-    pub fn define(&mut self, name: &str, val: Option<Value>) -> anyhow::Result<()> {
+    pub fn define(&mut self, name: &str, val: Option<Value>) -> Result<()> {
         if self.store.contains_key(name) {
-            anyhow::bail!("NameError: name '{name}' is already defined");
+            return Err(error::error!(Name, "name '{name}' is already defined"));
         } else {
             self.store.insert(
                 name.into(),
@@ -50,14 +53,14 @@ impl Environment {
         Ok(())
     }
 
-    pub fn assign(&mut self, name: &str, val: Value) -> anyhow::Result<()> {
+    pub fn assign(&mut self, name: &str, val: Value) -> Result<()> {
         if self.store.contains_key(name) {
             self.store.insert(name.into(), val);
         } else if let Some(parent) = &mut self.parent {
             let mut parent = parent.borrow_mut();
             parent.assign(name, val)?;
         } else {
-            anyhow::bail!("NameError: name {name} is not defined");
+            return Err(error::error!(Name, "name {name} is not defined"));
         }
 
         Ok(())

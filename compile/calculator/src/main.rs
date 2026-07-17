@@ -1,11 +1,7 @@
-use crate::{
+use calclang::{
     env::Environment,
     parser::{Parser, Token},
 };
-
-mod ast;
-mod env;
-mod parser;
 
 fn main() -> anyhow::Result<()> {
     let env = Environment::new();
