@@ -92,6 +92,9 @@ pub enum Op {
     Neq,
 
     Not,
+
+    And,
+    Or,
 }
 
 impl Display for Op {
@@ -112,6 +115,8 @@ impl Display for Op {
                 Self::Eq => "==",
                 Self::Neq => "!=",
                 Self::Not => "!",
+                Self::And => "and",
+                Self::Or => "or",
             }
         )
     }
@@ -121,8 +126,10 @@ impl Display for Op {
 pub enum ASTNode {
     Value(Value),
     Identifier(String),
-    Negate(Box<ASTNode>),
+    And(Box<ASTNode>, Box<ASTNode>),
+    Or(Box<ASTNode>, Box<ASTNode>),
     Binary(Box<ASTNode>, Op, Box<ASTNode>),
+    Negate(Box<ASTNode>),
     Unary(Op, Box<ASTNode>),
     Define(String, Option<Box<ASTNode>>),
     Assignment(String, Box<ASTNode>),
@@ -143,15 +150,38 @@ impl ASTNode {
                     anyhow::bail!("NameError: name '{identifier}' is not defined")
                 }
             }
-            Self::Negate(node) => {
-                let res = node.eval(env)?;
+            Self::And(left, right) | Self::Or(left, right) => {
+                let op = match self {
+                    Self::And(_, _) => "and",
+                    Self::Or(_, _) => "or",
+                    _ => unreachable!(),
+                };
 
-                Ok(match res {
-                    Value::Float(num) => Value::Float(-num),
-                    o => anyhow::bail!(
-                        "TypeError: Cannot negate a non-numeric value. Expected Float, but found: {o}"
-                    ),
-                })
+                let left = left.eval(env.clone())?;
+                let Value::Bool(l_val) = left else {
+                    anyhow::bail!(
+                        "TypeError: Cannot apply logical operator `{op}` on non-boolean operand '{}'",
+                        left.type_name()
+                    );
+                };
+
+                if match self {
+                    Self::And(_, _) => !l_val,
+                    Self::Or(_, _) => l_val,
+                    _ => unreachable!("self must be `and` or `or`"),
+                } {
+                    Ok(Value::Bool(l_val))
+                } else {
+                    let right = right.eval(env.clone())?;
+                    let Value::Bool(r_val) = right else {
+                        anyhow::bail!(
+                            "TypeError: Cannot apply logical operator `{op}` on non-boolean operand '{}'",
+                            right.type_name()
+                        );
+                    };
+
+                    Ok(Value::Bool(r_val))
+                }
             }
             Self::Binary(node_1, op, node_2) => {
                 let left = node_1.eval(env.clone())?;
@@ -163,6 +193,16 @@ impl ASTNode {
                 let res = node.eval(env)?;
 
                 res.apply_unary(op)
+            }
+            Self::Negate(node) => {
+                let res = node.eval(env)?;
+
+                Ok(match res {
+                    Value::Float(num) => Value::Float(-num),
+                    o => anyhow::bail!(
+                        "TypeError: Cannot negate a non-numeric value. Expected Float, but found: {o}"
+                    ),
+                })
             }
             Self::Define(identifier, expr) => {
                 let res = match expr {

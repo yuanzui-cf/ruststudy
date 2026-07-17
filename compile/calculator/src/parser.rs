@@ -8,13 +8,15 @@
 // bool ::= "true" | "false"
 // none ::= "none"
 //
-// expr ::= rel_expr
+// expr ::= or_expr
+// or_expr ::= and_expr ( "or" and_expr )*
+// and_expr ::= rel_expr ( "and" rel_expr )*
 // rel_expr ::= add_expr ( ("<" | "<=" | ">" | ">=" | "==" | "!=") add_expr )?
 // add_expr ::= "-"? mul_expr ( ( "+" | "-" ) mul_expr )*
 // mul_expr ::= exp_expr ( ( "*" | "/" ) exp_expr )*
 // exp_expr ::= not_expr ( "^" exp_expr )?
 // not_expr ::= "!"* primary_expr
-// primary_expr ::= identifier | block | condition_expr | types | "(" add_expr ")"
+// primary_expr ::= identifier | block | condition_expr | types | "(" expr ")"
 //
 // define ::= "let" identifier ( "=" expr )?
 // assignment ::= identifier "=" expr
@@ -219,6 +221,8 @@ impl Token {
                         "true" => tokens.push(Token::Value(Value::Bool(true))),
                         "false" => tokens.push(Token::Value(Value::Bool(false))),
                         "none" => tokens.push(Token::Value(Value::None)),
+                        "and" => tokens.push(Token::Op(Op::And)),
+                        "or" => tokens.push(Token::Op(Op::Or)),
                         _ => tokens.push(Token::Identifier(identifier)),
                     }
                 }
@@ -362,26 +366,56 @@ impl Parser {
     }
 
     fn expr(&mut self) -> anyhow::Result<ASTNode> {
-        self.rel_expr()
+        self.or_expr()
+    }
+
+    fn or_expr(&mut self) -> anyhow::Result<ASTNode> {
+        let mut res = self.and_expr()?;
+
+        loop {
+            let tok = self.peek()?;
+
+            if matches!(tok, Token::Op(Op::Or)) {
+                self.consume()?;
+                res = ASTNode::Or(Box::new(res), Box::new(self.and_expr()?));
+            } else {
+                break;
+            }
+        }
+
+        Ok(res)
+    }
+
+    fn and_expr(&mut self) -> anyhow::Result<ASTNode> {
+        let mut res = self.rel_expr()?;
+
+        loop {
+            let tok = self.peek()?;
+
+            if matches!(tok, Token::Op(Op::And)) {
+                self.consume()?;
+                res = ASTNode::And(Box::new(res), Box::new(self.rel_expr()?));
+            } else {
+                break;
+            }
+        }
+
+        Ok(res)
     }
 
     fn rel_expr(&mut self) -> anyhow::Result<ASTNode> {
         let mut res = self.add_expr()?;
 
-        loop {
-            let tok = self.peek()?;
+        let tok = self.peek()?;
 
-            if matches!(
-                tok,
-                Token::Op(Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::Eq | Op::Neq)
-            ) {
-                let Token::Op(op) = self.consume()? else {
-                    unreachable!("next is op")
-                };
-                res = ASTNode::Binary(Box::new(res), op, Box::new(self.add_expr()?));
-            } else {
-                break;
-            }
+        if matches!(
+            tok,
+            Token::Op(Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::Eq | Op::Neq)
+        ) {
+            let Token::Op(op) = self.consume()? else {
+                unreachable!("next is op")
+            };
+            res = ASTNode::Binary(Box::new(res), op, Box::new(self.add_expr()?));
         }
 
         Ok(res)
