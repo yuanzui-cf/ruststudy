@@ -11,4 +11,6 @@ path = "src/lib.rs"
 anyhow.workspace = true
 thiserror.workspace = true
 
+clap.workspace = true
+
 utils.workspace = true
