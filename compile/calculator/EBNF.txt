@@ -15,13 +15,14 @@ rel_expr ::= add_expr ( ("<" | "<=" | ">" | ">=" | "==" | "!=") add_expr )?
 add_expr ::= "-"? mul_expr ( ( "+" | "-" ) mul_expr )*
 mul_expr ::= not_expr ( ( "*" | "/" ) not_expr )*
 not_expr ::= "!"* exp_expr
-exp_expr ::= primary_expr ( "^" exp_expr )?
-primary_expr ::= base_expr ( "(" ( expr ( "," expr )* )? ")" )*
+exp_expr ::= call_expr ( "^" exp_expr )?
+call_expr ::= base_expr ( "(" ( expr ( "," expr )* )? ")" )*
 base_expr ::= literal
 			| identifier
 			| block
 			| condition_expr
 			| loop_expr
+			| fn_expr
 			| "(" expr ")"
 
 define ::= "let" identifier ( "=" expr )?
@@ -34,6 +35,14 @@ loop_expr ::= "loop" block
 break ::= "break" expr?
 continue ::= "continue"
 
-statement ::= ( assignment | define | break | continue | expr )? ";"
+fn_expr ::= "fn" identifier? "(" ( identifier ( "," identifier )* )? ")" block
+return ::= "return" expr?
+
+statement ::= ( assignment
+				| define
+				| break
+				| continue
+				| return
+				| expr )? ";"
 
 program ::= statement* expr?

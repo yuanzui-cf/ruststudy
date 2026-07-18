@@ -21,6 +21,7 @@ pub enum Error {
 pub enum InternalError {
     LoopBreak(Option<Value>),
     LoopContinue,
+    FunctionReturn(Option<Value>),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

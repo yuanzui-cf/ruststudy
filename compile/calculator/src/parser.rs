@@ -1,4 +1,4 @@
-use std::{fmt::Display, iter::Peekable, str::Chars, vec::IntoIter};
+use std::{fmt::Display, iter::Peekable, rc::Rc, str::Chars, vec::IntoIter};
 
 use crate::{
     ast::{ASTNode, Op, Value},
@@ -26,6 +26,8 @@ pub enum Token {
     Assign,
     /// ;
     Semi,
+    /// ,
+    Comma,
 
     Let,
     If,
@@ -33,6 +35,8 @@ pub enum Token {
     Loop,
     Break,
     Continue,
+    Fn,
+    Return,
 
     End,
 }
@@ -56,12 +60,15 @@ impl Display for Token {
                     Token::RP => ")",
                     Token::Assign => "=",
                     Token::Semi => ";",
+                    Token::Comma => ",",
                     Token::Let => "let",
                     Token::If => "if",
                     Token::Else => "else",
                     Token::Loop => "loop",
                     Token::Break => "break",
                     Token::Continue => "continue",
+                    Token::Fn => "fn",
+                    Token::Return => "return",
                     Token::Op(_) | Token::Identifier(_) | Token::Value(_) | Token::End => "",
                 },
             )?;
@@ -184,6 +191,7 @@ impl Token {
                     }
                 }
                 Some(';') => tokens.push(Token::Semi),
+                Some(',') => tokens.push(Token::Comma),
                 Some(other) if other.is_whitespace() => {
                     continue;
                 }
@@ -201,6 +209,8 @@ impl Token {
                         "loop" => tokens.push(Token::Loop),
                         "break" => tokens.push(Token::Break),
                         "continue" => tokens.push(Token::Continue),
+                        "fn" => tokens.push(Token::Fn),
+                        "return" => tokens.push(Token::Return),
                         _ => tokens.push(Token::Identifier(identifier)),
                     }
                 }
@@ -333,6 +343,29 @@ impl Parser {
                         }
 
                         Ok(ASTNode::Continue)
+                    }
+                    Token::Return => {
+                        self.consume()?;
+
+                        if matches!(self.peek()?, Token::Semi) {
+                            Ok(ASTNode::Return(None))
+                        } else if matches!(self.peek()?, Token::RB | Token::End) {
+                            return Err(error::error!(
+                                Syntax,
+                                "Statement must end with a semicolon ';'"
+                            ));
+                        } else {
+                            let res = self.expr()?;
+
+                            if !matches!(self.peek()?, Token::Semi) {
+                                return Err(error::error!(
+                                    Syntax,
+                                    "Statement must end with a semicolon ';'"
+                                ));
+                            }
+
+                            Ok(ASTNode::Return(Some(Box::new(res))))
+                        }
                     }
                     _ => self.assignment_or_expr(),
                 }
@@ -507,7 +540,7 @@ impl Parser {
     }
 
     fn exp_expr(&mut self) -> Result<ASTNode> {
-        let mut res = self.primary_expr()?;
+        let mut res = self.call_expr()?;
 
         let tok = self.peek()?;
 
@@ -521,7 +554,52 @@ impl Parser {
         Ok(res)
     }
 
-    fn primary_expr(&mut self) -> Result<ASTNode> {
+    fn call_expr(&mut self) -> Result<ASTNode> {
+        let mut expr = self.base_expr()?;
+
+        loop {
+            let tok = self.peek()?;
+            let mut vals = Vec::new();
+
+            if matches!(tok, Token::LP) {
+                self.consume()?;
+
+                if !matches!(self.peek()?, Token::RP) {
+                    let val = self.expr()?;
+                    vals.push(val);
+
+                    loop {
+                        let tok = self.peek()?;
+
+                        if matches!(tok, Token::Comma) {
+                            self.consume()?;
+
+                            let val = self.expr()?;
+                            vals.push(val);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                if let next = self.peek()?
+                    && next != &Token::RP
+                {
+                    return Err(error::error!(Syntax, "Expected `)`, found {next}"));
+                } else {
+                    self.consume()?;
+                }
+
+                expr = ASTNode::Call(Box::new(expr), vals);
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn base_expr(&mut self) -> Result<ASTNode> {
         let tok = self.consume()?;
 
         match tok {
@@ -529,6 +607,7 @@ impl Parser {
             Token::Identifier(identifier) => Ok(ASTNode::Identifier(identifier)),
             Token::If => self.condition_expr(),
             Token::Loop => self.loop_expr(),
+            Token::Fn => self.fn_expr(),
             Token::LB => self.block(),
             Token::LP => {
                 let res = self.expr()?;
@@ -611,5 +690,78 @@ impl Parser {
         let block = self.block()?;
 
         Ok(ASTNode::Loop(Box::new(block)))
+    }
+
+    fn fn_expr(&mut self) -> Result<ASTNode> {
+        let identifier = if matches!(self.peek()?, Token::Identifier(_)) {
+            let Token::Identifier(identifier) = self.consume()? else {
+                unreachable!("next is identifier")
+            };
+            Some(identifier)
+        } else {
+            None
+        };
+
+        let mut args = Vec::new();
+        if matches!(self.peek()?, &Token::LP) {
+            self.consume()?;
+
+            if !matches!(self.peek()?, &Token::RP) {
+                let arg = match self.peek()? {
+                    Token::Identifier(_) => {
+                        let Token::Identifier(identifier) = self.consume()? else {
+                            unreachable!("next is identifier")
+                        };
+                        identifier
+                    }
+                    o => return Err(error::error!(Syntax, "Expected identifier, found {o}")),
+                };
+
+                args.push(arg);
+
+                loop {
+                    if matches!(self.peek()?, &Token::Comma) {
+                        self.consume()?;
+                        let arg = match self.peek()? {
+                            Token::Identifier(_) => {
+                                let Token::Identifier(identifier) = self.consume()? else {
+                                    unreachable!("next is identifier")
+                                };
+                                identifier
+                            }
+                            o => {
+                                return Err(error::error!(
+                                    Syntax,
+                                    "Expected identifier, found {o}"
+                                ));
+                            }
+                        };
+
+                        args.push(arg);
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            if let next = self.peek()?
+                && next != &Token::RP
+            {
+                return Err(error::error!(Syntax, "Expected `)`, found {next}"));
+            } else {
+                self.consume()?;
+            }
+        } else {
+            return Err(error::error!(Syntax, "Expected `(`, but not found"));
+        }
+
+        if self.peek()? != &Token::LB {
+            return Err(error::error!(Syntax, "Expected `{{`, but not found"));
+        }
+
+        self.consume()?;
+        let block = self.block()?;
+
+        Ok(ASTNode::Fn(identifier, args, Rc::new(block)))
     }
 }

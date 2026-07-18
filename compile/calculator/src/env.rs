@@ -65,4 +65,8 @@ impl Environment {
 
         Ok(())
     }
+
+    pub fn define_or_assign(&mut self, name: &str, val: Value) {
+        self.store.insert(name.into(), val);
+    }
 }

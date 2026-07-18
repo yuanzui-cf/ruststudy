@@ -30,19 +30,23 @@ fn main() -> anyhow::Result<()> {
     let env = Environment::new();
 
     if let Some(expr) = matches.get_one::<String>("expr") {
-        let tokens = Token::tokenize(expr)?;
+        let tokens = Token::tokenize(expr).map_err(|e| anyhow::anyhow!("{e}"))?;
         let mut parser = Parser::new(tokens);
-        let ast = parser.parse()?;
-        let res = ast.eval(env, Context::default())?;
+        let ast = parser.parse().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let res = ast
+            .eval(env, Context::default())
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         println!("{res}");
     } else if let Some(input) = matches.get_one::<String>("input") {
         let expr = std::fs::read_to_string(input)?;
 
-        let tokens = Token::tokenize(&expr)?;
+        let tokens = Token::tokenize(&expr).map_err(|e| anyhow::anyhow!("{e}"))?;
         let mut parser = Parser::new(tokens);
-        let ast = parser.parse()?;
-        let res = ast.eval(env, Context::default())?;
+        let ast = parser.parse().map_err(|e| anyhow::anyhow!("{e}"))?;
+        let res = ast
+            .eval(env, Context::default())
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         println!("{res}");
     } else {

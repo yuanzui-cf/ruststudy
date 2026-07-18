@@ -10,11 +10,26 @@ use crate::{
     error::{self, Error, InternalError, Result},
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Float(f64),
     Bool(bool),
+    Fn(Vec<String>, Rc<ASTNode>, Rc<RefCell<Environment>>),
     None,
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::None, Value::None) => true,
+            (Value::Fn(_, block1, env1), Value::Fn(_, block2, env2)) => {
+                Rc::ptr_eq(block1, block2) && Rc::ptr_eq(env1, env2)
+            }
+            _ => false,
+        }
+    }
 }
 
 impl Display for Value {
@@ -22,17 +37,19 @@ impl Display for Value {
         match self {
             Self::Float(num) => write!(f, "{num}"),
             Self::Bool(val) => write!(f, "{val}"),
+            Self::Fn(_, _, _) => write!(f, "fn"),
             Self::None => write!(f, "none"),
         }
     }
 }
 
 impl Value {
-    pub fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> String {
         match self {
-            Self::Float(_) => "float",
-            Self::Bool(_) => "bool",
-            Self::None => "none",
+            Self::Float(_) => "float".into(),
+            Self::Bool(_) => "bool".into(),
+            Self::Fn(l, _, _) => format!("fn({})", l.join(",")),
+            Self::None => "none".into(),
         }
     }
 
@@ -151,7 +168,10 @@ pub enum ASTNode {
     Condition(Box<ASTNode>, Box<ASTNode>, Option<Box<ASTNode>>),
     Loop(Box<ASTNode>),
     Break(Option<Box<ASTNode>>),
+    Return(Option<Box<ASTNode>>),
     Continue,
+    Fn(Option<String>, Vec<String>, Rc<ASTNode>),
+    Call(Box<ASTNode>, Vec<ASTNode>),
 }
 
 impl ASTNode {
@@ -288,19 +308,18 @@ impl ASTNode {
                 }
             }
             Self::Loop(block) => {
-                let loop_ctx = Context { is_loop: true };
+                let loop_ctx = Context {
+                    is_loop: true,
+                    ..ctx
+                };
 
                 let res = 'l: loop {
                     let res = block.eval(env.clone(), loop_ctx.clone());
 
                     match res {
                         Ok(_) => Ok(()),
-                        Err(Error::Internal(InternalError::LoopBreak(expr))) => {
-                            if let Some(val) = expr {
-                                break 'l val;
-                            } else {
-                                break 'l Value::None;
-                            }
+                        Err(Error::Internal(InternalError::LoopBreak(val))) => {
+                            break 'l val.unwrap_or(Value::None);
                         }
                         Err(Error::Internal(InternalError::LoopContinue)) => continue,
                         Err(err) => Err(err),
@@ -327,6 +346,71 @@ impl ASTNode {
                 } else {
                     Err(error::error!(Internal, InternalError::LoopContinue))
                 }
+            }
+            Self::Fn(identifier, args, block) => {
+                let func = Value::Fn(args.clone(), block.clone(), env.clone());
+
+                if let Some(identifier) = identifier {
+                    let mut env = env.borrow_mut();
+                    env.define_or_assign(identifier, func.clone());
+                }
+
+                Ok(func)
+            }
+            Self::Return(expr) => {
+                if ctx.depth == 0 {
+                    Err(error::error!(
+                        Runtime,
+                        "Cannot use return outside a function"
+                    ))
+                } else {
+                    let res = match expr {
+                        Some(expr) => Some(expr.eval(env, ctx)?),
+                        None => None,
+                    };
+
+                    Err(error::error!(Internal, InternalError::FunctionReturn(res)))
+                }
+            }
+            Self::Call(expr, vals) => {
+                if ctx.depth > 1000 {
+                    return Err(error::error!(Runtime, "maximum recursion depth exceeded"));
+                }
+
+                let (args, block, f_env) = match expr.eval(env.clone(), ctx.clone())? {
+                    Value::Fn(args, block, f_env) => (args, block, f_env),
+                    o => return Err(error::error!(Type, "Expect a function, found {o}")),
+                };
+
+                let mut evaluated_vals = Vec::with_capacity(vals.len());
+                for val in vals {
+                    evaluated_vals.push(val.eval(env.clone(), ctx.clone())?);
+                }
+
+                let run_env = Environment::new_child(f_env);
+
+                let mut env_borrowed = run_env.borrow_mut();
+                for (i, arg) in args.iter().enumerate() {
+                    let val = evaluated_vals.get(i).cloned().unwrap_or(Value::None);
+                    env_borrowed.define_or_assign(arg, val);
+                }
+                drop(env_borrowed);
+
+                let res = match block.eval(
+                    run_env,
+                    Context {
+                        is_loop: false,
+                        depth: ctx.depth + 1,
+                    },
+                ) {
+                    Ok(res) => Ok(res),
+                    Err(Error::Internal(InternalError::FunctionReturn(val))) => {
+                        Ok(val.unwrap_or(Value::None))
+                    }
+                    Err(err) => Err(err),
+                }?;
+
+                Ok(res)
             }
         }
     }
