@@ -469,7 +469,7 @@ impl Parser {
     }
 
     fn mul_expr(&mut self) -> Result<ASTNode> {
-        let mut res = self.exp_expr()?;
+        let mut res = self.not_expr()?;
 
         loop {
             let tok = self.peek()?;
@@ -478,25 +478,10 @@ impl Parser {
                 let Token::Op(op) = self.consume()? else {
                     unreachable!("next is op")
                 };
-                res = ASTNode::Binary(Box::new(res), op, Box::new(self.exp_expr()?));
+                res = ASTNode::Binary(Box::new(res), op, Box::new(self.not_expr()?));
             } else {
                 break;
             }
-        }
-
-        Ok(res)
-    }
-
-    fn exp_expr(&mut self) -> Result<ASTNode> {
-        let mut res = self.not_expr()?;
-
-        let tok = self.peek()?;
-
-        if matches!(tok, Token::Op(Op::Exp)) {
-            let Token::Op(op) = self.consume()? else {
-                unreachable!("next is op")
-            };
-            res = ASTNode::Binary(Box::new(res), op, Box::new(self.exp_expr()?));
         }
 
         Ok(res)
@@ -512,13 +497,28 @@ impl Parser {
             not = !not;
         }
 
-        let res = self.primary_expr()?;
+        let res = self.exp_expr()?;
 
         Ok(if not {
             ASTNode::Unary(Op::Not, Box::new(res))
         } else {
             res
         })
+    }
+
+    fn exp_expr(&mut self) -> Result<ASTNode> {
+        let mut res = self.primary_expr()?;
+
+        let tok = self.peek()?;
+
+        if matches!(tok, Token::Op(Op::Exp)) {
+            let Token::Op(op) = self.consume()? else {
+                unreachable!("next is op")
+            };
+            res = ASTNode::Binary(Box::new(res), op, Box::new(self.exp_expr()?));
+        }
+
+        Ok(res)
     }
 
     fn primary_expr(&mut self) -> Result<ASTNode> {

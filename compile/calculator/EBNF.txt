@@ -2,7 +2,7 @@ letter ::= [a-zA-Z_]
 digit ::= [0-9]
 identifier ::= letter ( letter | digit )*
 
-types ::= float | bool | none
+literal ::= float | bool | none
 
 float ::= digit+ ( "." digit* )? | "." digit+
 bool ::= "true" | "false"
@@ -13,10 +13,16 @@ or_expr ::= and_expr ( "or" and_expr )*
 and_expr ::= rel_expr ( "and" rel_expr )*
 rel_expr ::= add_expr ( ("<" | "<=" | ">" | ">=" | "==" | "!=") add_expr )?
 add_expr ::= "-"? mul_expr ( ( "+" | "-" ) mul_expr )*
-mul_expr ::= exp_expr ( ( "*" | "/" ) exp_expr )*
-exp_expr ::= not_expr ( "^" exp_expr )?
-not_expr ::= "!"* primary_expr
-primary_expr ::= identifier | block | condition_expr | loop_expr | types | "(" expr ")"
+mul_expr ::= not_expr ( ( "*" | "/" ) not_expr )*
+not_expr ::= "!"* exp_expr
+exp_expr ::= primary_expr ( "^" exp_expr )?
+primary_expr ::= base_expr ( "(" ( expr ( "," expr )* )? ")" )*
+base_expr ::= literal
+			| identifier
+			| block
+			| condition_expr
+			| loop_expr
+			| "(" expr ")"
 
 define ::= "let" identifier ( "=" expr )?
 assignment ::= identifier "=" expr
