@@ -139,7 +139,38 @@ impl Lexer {
                 Some('+') => tokens.push(Token::Op(Op::Add)),
                 Some('-') => tokens.push(Token::Op(Op::Sub)),
                 Some('*') => tokens.push(Token::Op(Op::Mul)),
-                Some('/') => tokens.push(Token::Op(Op::Div)),
+                Some('/') => {
+                    if let Some(next) = expr.peek() {
+                        if next == &'/' {
+                            expr.next();
+                            while let Some(next) = expr.next()
+                                && next != '\n'
+                            {}
+                            continue;
+                        } else if next == &'*' {
+                            let mut is_closed = false;
+
+                            while let Some(c) = expr.next() {
+                                if c == '*' && expr.peek() == Some(&'/') {
+                                    expr.next();
+                                    is_closed = true;
+                                    break;
+                                }
+                            }
+
+                            if !is_closed {
+                                return Err(error::error!(
+                                    Syntax,
+                                    "Unterminated block comment found"
+                                ));
+                            }
+
+                            continue;
+                        }
+                    }
+
+                    tokens.push(Token::Op(Op::Div))
+                }
                 Some('^') => tokens.push(Token::Op(Op::Exp)),
                 Some('{') => tokens.push(Token::LB),
                 Some('}') => tokens.push(Token::RB),
@@ -195,6 +226,8 @@ impl Lexer {
                 }
                 Some(';') => tokens.push(Token::Semi),
                 Some(',') => tokens.push(Token::Comma),
+                // Some('/') => {
+                // }
                 Some(other) if other.is_whitespace() => {
                     continue;
                 }
