@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    ast::Value,
+    ast::{BuiltIn, Value},
     error::{self, Result},
 };
 
@@ -68,5 +68,9 @@ impl Environment {
 
     pub fn define_or_assign(&mut self, name: &str, val: Value) {
         self.store.insert(name.into(), val);
+    }
+
+    pub fn define_builtin(&mut self, name: &str, val: BuiltIn) {
+        self.store.insert(name.into(), Value::BuiltIn(val));
     }
 }

@@ -15,8 +15,11 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Fn(Vec<String>, Rc<ASTNode>, Rc<RefCell<Environment>>),
+    BuiltIn(BuiltIn),
     None,
 }
+
+pub type BuiltIn = fn(Vec<Value>) -> Result<Value>;
 
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
@@ -37,7 +40,7 @@ impl Display for Value {
         match self {
             Self::Float(num) => write!(f, "{num}"),
             Self::Bool(val) => write!(f, "{val}"),
-            Self::Fn(_, _, _) => write!(f, "fn"),
+            Self::Fn(_, _, _) | Self::BuiltIn(_) => write!(f, "fn"),
             Self::None => write!(f, "none"),
         }
     }
@@ -49,6 +52,7 @@ impl Value {
             Self::Float(_) => "float".into(),
             Self::Bool(_) => "bool".into(),
             Self::Fn(l, _, _) => format!("fn({})", l.join(",")),
+            Self::BuiltIn(_) => "fn".into(),
             Self::None => "none".into(),
         }
     }
@@ -377,15 +381,22 @@ impl ASTNode {
                     return Err(error::error!(Runtime, "maximum recursion depth exceeded"));
                 }
 
-                let (args, block, f_env) = match expr.eval(env.clone(), ctx.clone())? {
-                    Value::Fn(args, block, f_env) => (args, block, f_env),
-                    o => return Err(error::error!(Type, "Expect a function, found {o}")),
-                };
+                let expr = expr.eval(env.clone(), ctx.clone())?;
+
+                if !matches!(expr, Value::Fn(_, _, _) | Value::BuiltIn(_)) {
+                    return Err(error::error!(Type, "Expect a function, found {expr}"));
+                }
 
                 let mut evaluated_vals = Vec::with_capacity(vals.len());
                 for val in vals {
                     evaluated_vals.push(val.eval(env.clone(), ctx.clone())?);
                 }
+
+                let (args, block, f_env) = match expr {
+                    Value::Fn(args, block, f_env) => (args, block, f_env),
+                    Value::BuiltIn(build_in) => return build_in(evaluated_vals),
+                    _ => unreachable!("expr is function"),
+                };
 
                 let run_env = Environment::new_child(f_env);
 

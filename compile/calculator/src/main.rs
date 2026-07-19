@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use calclang::{ctx::Context, env::Environment, lexer::Lexer, parser::Parser};
 use clap::{Arg, ArgGroup, command};
 use rustyline::{
@@ -50,6 +52,21 @@ fn main() -> anyhow::Result<()> {
 
     let env = Environment::new();
 
+    let mut env_borrowed = env.borrow_mut();
+    env_borrowed.define_builtin("println", |vals| {
+        for val in vals {
+            print!("{val}");
+        }
+
+        println!();
+
+        Ok(calclang::ast::Value::None)
+    });
+    env_borrowed.define_builtin("exit", |_| {
+        exit(0);
+    });
+    drop(env_borrowed);
+
     if let Some(expr) = matches.get_one::<String>("expr") {
         let tokens = Lexer::tokenize(expr).map_err(|e| anyhow::anyhow!("{e}"))?;
         let mut parser = Parser::new(tokens);
@@ -83,10 +100,6 @@ fn main() -> anyhow::Result<()> {
                 Ok(expr) => {
                     rl.add_history_entry(expr.as_str())?;
 
-                    if expr.trim() == ".exit" {
-                        break;
-                    }
-
                     let tokens = match Lexer::tokenize(&expr) {
                         Ok(toks) => toks,
                         Err(e) => {
@@ -111,7 +124,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 Err(ReadlineError::Interrupted) => {
                     println!("KeyboardInterrupt");
-                    println!("TIPS: If you want to exit, use \".exit\" or \"Ctrl + D\" instead.");
+                    println!("TIPS: If you want to exit, use \"exit()\" or \"Ctrl + D\" instead.");
                 }
                 Err(ReadlineError::Eof) => {
                     break;
