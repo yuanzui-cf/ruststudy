@@ -1,9 +1,36 @@
+use std::borrow::Cow;
+
 use calclang::{
     ctx::Context,
     env::Environment,
     parser::{Parser, Token},
 };
 use clap::{Arg, ArgGroup, command};
+use rustyline::{
+    Completer, Editor, Helper, Highlighter, Hinter,
+    error::ReadlineError,
+    validate::{ValidationContext, ValidationResult, Validator},
+};
+
+#[derive(Helper, Completer, Highlighter, Hinter)]
+struct InputHelper;
+
+impl Validator for InputHelper {
+    fn validate(&self, ctx: &mut ValidationContext) -> rustyline::Result<ValidationResult> {
+        let input = ctx.input();
+
+        if input.trim_end().ends_with('\\')
+            || input.chars().filter(|&c| c == '(').count()
+                != input.chars().filter(|&c| c == ')').count()
+            || input.chars().filter(|&c| c == '{').count()
+                != input.chars().filter(|&c| c == '}').count()
+        {
+            Ok(ValidationResult::Incomplete)
+        } else {
+            Ok(ValidationResult::Valid(None))
+        }
+    }
+}
 
 fn main() -> anyhow::Result<()> {
     let matches = command!()
@@ -50,42 +77,53 @@ fn main() -> anyhow::Result<()> {
 
         println!("{res}");
     } else {
+        let mut rl = Editor::new()?;
+        rl.set_helper(Some(InputHelper));
+
+        let _ = rl.load_history(".calc_history");
+
         loop {
-            let mut expr = utils::io::input::input!("calc > ", String)?;
+            let readline = rl.readline("calc>> ");
 
-            if expr.trim() == ".exit" {
-                break;
-            }
+            match readline {
+                Ok(expr) => {
+                    rl.add_history_entry(expr.as_str())?;
 
-            while expr.trim_end().ends_with('\\') {
-                let trimmed_len = expr
-                    .trim_end_matches(|c: char| c == '\\' || c.is_whitespace())
-                    .len();
-                expr.truncate(trimmed_len);
-
-                let new = utils::io::input::input!("       ", String)?;
-                expr.push_str(&new);
-            }
-
-            let tokens = match Token::tokenize(&expr) {
-                Ok(toks) => toks,
-                Err(e) => {
-                    eprintln!("{e}");
-                    continue;
-                }
-            };
-
-            let mut parser = Parser::new(tokens);
-
-            match parser.parse() {
-                Ok(res) => match res.eval(env.clone(), Context::default()) {
-                    Ok(res) => println!("{res}"),
-                    Err(e) => {
-                        eprintln!("{e}")
+                    if expr.trim() == ".exit" {
+                        break;
                     }
-                },
-                Err(e) => {
-                    eprintln!("{e}");
+
+                    let tokens = match Token::tokenize(&expr) {
+                        Ok(toks) => toks,
+                        Err(e) => {
+                            eprintln!("{e}");
+                            continue;
+                        }
+                    };
+
+                    let mut parser = Parser::new(tokens);
+
+                    match parser.parse() {
+                        Ok(res) => match res.eval(env.clone(), Context::default()) {
+                            Ok(res) => println!("{res}"),
+                            Err(e) => {
+                                eprintln!("{e}")
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!("{e}");
+                        }
+                    }
+                }
+                Err(ReadlineError::Interrupted) => {
+                    println!("KeyboardInterrupt");
+                    println!("TIPS: If you want to exit, use \".exit\" or \"Ctrl + D\" instead.");
+                }
+                Err(ReadlineError::Eof) => {
+                    break;
+                }
+                Err(err) => {
+                    eprintln!("REPL Error: {:?}", err);
                 }
             }
         }
