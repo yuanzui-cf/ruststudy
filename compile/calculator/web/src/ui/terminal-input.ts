@@ -31,6 +31,10 @@ export class TerminalInputEditor {
     for (const character of data) {
       const codePoint = character.codePointAt(0) ?? 0;
 
+      if (codePoint === 0x18 || codePoint === 0x1a) {
+        this.cancelSequence();
+        continue;
+      }
       if (this.escapeState === "string") {
         this.applyControlString(character, codePoint);
         continue;
@@ -40,6 +44,10 @@ export class TerminalInputEditor {
         continue;
       }
       if (this.escapeState === "csi") {
+        if (character === "\x1b") {
+          this.escapeState = "escape";
+          continue;
+        }
         if (isCsiFinalByte(codePoint)) {
           this.escapeState = "none";
         }
@@ -128,6 +136,12 @@ export class TerminalInputEditor {
   private startControlString(allowsBell: boolean): void {
     this.escapeState = "string";
     this.stringAllowsBell = allowsBell;
+    this.stringEscape = false;
+  }
+
+  private cancelSequence(): void {
+    this.escapeState = "none";
+    this.stringAllowsBell = false;
     this.stringEscape = false;
   }
 

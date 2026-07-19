@@ -74,6 +74,32 @@ test("keeps CSI state across data chunks", () => {
   expect(editor.value).toBe("X");
 });
 
+test("CAN cancels a split CSI sequence", () => {
+  const editor = new TerminalInputEditor();
+
+  expect(editor.apply("\x1b[")).toEqual({ echo: "" });
+  expect(editor.apply("\x18")).toEqual({ echo: "" });
+  expect(editor.apply("X")).toEqual({ echo: "X" });
+  expect(editor.value).toBe("X");
+});
+
+test("SUB cancels a split control string", () => {
+  const editor = new TerminalInputEditor();
+
+  expect(editor.apply("\x1bPpayload")).toEqual({ echo: "" });
+  expect(editor.apply("\x1a")).toEqual({ echo: "" });
+  expect(editor.apply("X")).toEqual({ echo: "X" });
+  expect(editor.value).toBe("X");
+});
+
+test("ESC inside CSI restarts escape parsing", () => {
+  const editor = new TerminalInputEditor();
+
+  expect(editor.apply("\x1b[31")).toEqual({ echo: "" });
+  expect(editor.apply("\x1b7X")).toEqual({ echo: "X" });
+  expect(editor.value).toBe("X");
+});
+
 test("keeps OSC state across data chunks", () => {
   const editor = new TerminalInputEditor();
 
