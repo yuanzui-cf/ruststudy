@@ -178,6 +178,10 @@ button {
   flex: 1;
 }
 
+#problems {
+  overflow: auto;
+}
+
 .output-entry {
   overflow-wrap: anywhere;
   white-space: pre-wrap;

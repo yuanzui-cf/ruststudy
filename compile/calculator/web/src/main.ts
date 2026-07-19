@@ -7,6 +7,12 @@ import "@xterm/xterm/css/xterm.css";
 import { createInputBuffer } from "./runtime/input-buffer";
 import { RunController } from "./runtime/run-controller";
 import { OutputWindow } from "./ui/output-window";
+import {
+  bindEditorDirtyIndicator,
+  createRunControllerCallbacks,
+  runEditor,
+  type ToolName,
+} from "./ui/playground-integration";
 import { TerminalWindow } from "./ui/terminal-window";
 import "./styles.css";
 
@@ -21,8 +27,6 @@ function required<T extends HTMLElement>(id: string): T {
   }
   return element as T;
 }
-
-type ToolName = "terminal" | "problems";
 
 const editorContainer = required<HTMLDivElement>("editor");
 const runButton = required<HTMLButtonElement>("run-button");
@@ -65,38 +69,28 @@ const controller = new RunController({
     new Worker(new URL("./runtime/calclang.worker.ts", import.meta.url), {
       type: "module",
     }),
-  onReset: () => {
-    terminal.reset();
-    problems.clear();
-    setProblemCount(0);
-    selectTool("terminal");
-  },
-  onOutput: (entries) => terminal.write(entries),
-  onInput: (buffer) => terminal.requestInput(buffer),
-  onProblem: (category, message) => {
-    problems.append([`${category}: ${message}`], "problem-entry");
-    setProblemCount(1);
-    selectTool("problems");
-  },
-  onRunningChange: (running) => {
-    stopButton.disabled = !running;
-    if (!running) {
-      terminal.cancelInput();
-    }
-  },
+  ...createRunControllerCallbacks({
+    terminal,
+    problems,
+    setProblemCount,
+    selectTool,
+    setStopDisabled: (disabled) => {
+      stopButton.disabled = disabled;
+    },
+  }),
 });
 
 runButton.addEventListener("click", () => {
-  const inputBuffer =
-    typeof SharedArrayBuffer === "undefined" ? undefined : createInputBuffer();
-  controller.run(editor.getValue(), false, inputBuffer);
+  runEditor(controller, editor, () =>
+    typeof SharedArrayBuffer === "undefined" ? undefined : createInputBuffer(),
+  );
 });
 stopButton.addEventListener("click", () => controller.stop());
 terminalTab.addEventListener("click", () => selectTool("terminal"));
 problemsTab.addEventListener("click", () => selectTool("problems"));
 
-editor.onDidChangeModelContent(() => {
-  dirtyIndicator.classList.add("visible");
+bindEditorDirtyIndicator(editor, {
+  markDirty: () => dirtyIndicator.classList.add("visible"),
 });
 editor.onDidChangeCursorPosition(({ position }) => {
   cursorPosition.textContent = `Ln ${position.lineNumber}, Col ${position.column}`;

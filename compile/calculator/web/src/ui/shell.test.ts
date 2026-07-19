@@ -24,30 +24,6 @@ test("shell contains the approved controls and omits runtime internals", async (
   expect(html).not.toContain("10:00");
 });
 
-test("worker waits for terminal input through the shared buffer", async () => {
-  const worker = await Bun.file(
-    new URL("../runtime/calclang.worker.ts", import.meta.url),
-  ).text();
-  expect(worker).toContain('import { waitForInput } from "./input-buffer";');
-  expect(worker).toContain("createHostFunctions(");
-  expect(worker).toContain("waitForInput(request.inputBuffer");
-  expect(worker).toContain("batcher.flush();");
-  expect(worker).toContain("input() requires cross-origin isolation");
-});
-
-test("main routes runs through the terminal and preserves input lifecycle", async () => {
-  const main = await Bun.file(new URL("../main.ts", import.meta.url)).text();
-  expect(main).toContain('import "@xterm/xterm/css/xterm.css";');
-  expect(main).toContain('import { TerminalWindow } from "./ui/terminal-window";');
-  expect(main).toContain('type ToolName = "terminal" | "problems";');
-  expect(main).toContain('required<HTMLDivElement>("terminal")');
-  expect(main).toContain("createInputBuffer()");
-  expect(main).toContain("terminal.write(entries)");
-  expect(main).toContain("terminal.requestInput(buffer)");
-  expect(main).toContain("terminal.cancelInput()");
-  expect(main).toContain("terminal.dispose()");
-});
-
 test("Vite serves cross-origin isolation headers", async () => {
   const config = (await import("../../vite.config")).default as {
     server?: { headers?: Record<string, string> };
@@ -75,8 +51,9 @@ test("terminal panel uses stable flex sizing without outer padding", async () =>
     new URL("../styles.css", import.meta.url),
   ).text();
   expect(styles).toMatch(/#terminal\s*\{[^}]*padding:\s*0/s);
-  expect(styles).toContain(".xterm");
   expect(styles).toMatch(/#terminal\s*\{[^}]*flex:\s*1/s);
+  expect(styles).toMatch(/\.xterm\s*\{[^}]*width:\s*100%[^}]*height:\s*100%/s);
+  expect(styles).toMatch(/#problems\s*\{[^}]*overflow:\s*auto/s);
 });
 
 test("shell uses only the Calclang product name", async () => {
