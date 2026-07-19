@@ -5,3 +5,6 @@ pub mod error;
 pub mod interpreter;
 pub mod lexer;
 pub mod parser;
+
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;

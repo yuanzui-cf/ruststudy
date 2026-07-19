@@ -401,6 +401,15 @@ git commit -m "feat(calculator): Add interpreter facade"
 Add to compile/calculator/Cargo.toml:
 
 ~~~toml
+[[bin]]
+name = "calculator"
+path = "src/main.rs"
+required-features = ["native-cli"]
+
+[features]
+default = ["native-cli"]
+native-cli = []
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
 wasm-bindgen = "0.2"
@@ -491,7 +500,7 @@ Expected: wasm-pack reports its installed version. This is a Rust tool and does 
 Run:
 
 ~~~text
-wasm-pack test --headless --chrome compile/calculator
+wasm-pack test --headless --chrome compile/calculator --no-default-features
 ~~~
 
 Expected: compilation fails because WasmInterpreter is not implemented.
@@ -628,7 +637,7 @@ Run:
 
 ~~~text
 cargo test -p calculator
-wasm-pack test --headless --chrome compile/calculator
+wasm-pack test --headless --chrome compile/calculator --no-default-features
 cargo build -p calculator --lib --target wasm32-unknown-unknown --release
 ~~~
 
@@ -665,7 +674,7 @@ Create compile/calculator/web/package.json:
   "private": true,
   "type": "module",
   "scripts": {
-    "wasm": "wasm-pack build .. --target web --out-dir web/src/generated/calclang --out-name calclang --release",
+    "wasm": "wasm-pack build .. --target web --out-dir web/src/generated/calclang --out-name calclang --release --no-default-features",
     "dev": "bun run wasm && vite",
     "test": "bun test",
     "build": "bun run wasm && tsc --noEmit && vite build"
@@ -2059,7 +2068,7 @@ Expected: formatting is clean, Clippy reports zero warnings, and every native Ru
 Run:
 
 ~~~text
-wasm-pack test --headless --chrome compile/calculator
+wasm-pack test --headless --chrome compile/calculator --no-default-features
 ~~~
 
 Expected: all host bridge browser tests pass.
