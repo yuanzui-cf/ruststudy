@@ -1,12 +1,13 @@
 use std::process::exit;
 
-use calclang::{ctx::Context, env::Environment, lexer::Lexer, parser::Parser};
 use clap::{Arg, ArgGroup, command};
 use rustyline::{
     Completer, Editor, Helper, Highlighter, Hinter,
     error::ReadlineError,
     validate::{ValidationContext, ValidationResult, Validator},
 };
+
+use calclang::{ctx::Context, env::Environment, error, lexer::Lexer, parser::Parser};
 
 #[derive(Helper, Completer, Highlighter, Hinter)]
 struct InputHelper;
@@ -64,6 +65,17 @@ fn main() -> anyhow::Result<()> {
     });
     env_borrowed.define_builtin("exit", |_| {
         exit(0);
+    });
+    env_borrowed.define_builtin("typeof", |val| {
+        if val.len() != 1 {
+            Err(error::error!(
+                Runtime,
+                "Expect one arg in typeof, found {}",
+                val.len()
+            ))
+        } else {
+            Ok(calclang::ast::Value::String(val[0].type_name()))
+        }
     });
     drop(env_borrowed);
 

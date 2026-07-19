@@ -105,9 +105,30 @@ impl Lexer {
             res.push(chr);
         }
 
+        if let Some(&'e' | &'E') = expr.peek() {
+            res.push(expr.next().unwrap());
+
+            if let Some(&'+' | &'-') = expr.peek() {
+                res.push(expr.next().unwrap());
+            }
+
+            if let Some(&c) = expr.peek()
+                && c.is_ascii_digit()
+            {
+                while let Some(&c) = expr.peek()
+                    && c.is_ascii_digit()
+                {
+                    res.push(expr.next().unwrap());
+                }
+            } else {
+                let offencer = expr.peek().cloned().unwrap_or(' ');
+                return Err(error::error!(Syntax, "Invalid syntax `{offencer}` found"));
+            }
+        }
+
         let num = res
             .parse::<f64>()
-            .map_err(|e| error::error!(Syntax, "Failed to parse {res} as 64-bit number: {e}"))?;
+            .map_err(|e| error::error!(Syntax, "Failed to parse {res} as number: {e}"))?;
 
         Ok(num)
     }

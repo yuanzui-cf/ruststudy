@@ -43,8 +43,7 @@ impl Display for Value {
             Self::Float(num) => write!(f, "{num}"),
             Self::Bool(val) => write!(f, "{val}"),
             Self::String(str) => write!(f, "{str}"),
-            Self::Fn(_, _, _) | Self::BuiltIn(_) => write!(f, "fn"),
-            Self::None => write!(f, "none"),
+            Self::Fn(_, _, _) | Self::BuiltIn(_) | Self::None => write!(f, ""),
         }
     }
 }
