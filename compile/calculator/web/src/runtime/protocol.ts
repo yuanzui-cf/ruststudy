@@ -3,12 +3,14 @@ export interface RunRequest {
   runId: number;
   source: string;
   preserveEnvironment: boolean;
+  inputBuffer?: SharedArrayBuffer;
 }
 
 export type WorkerRequest = RunRequest;
 
 export type WorkerResponse =
   | { type: "output"; runId: number; entries: string[] }
+  | { type: "input"; runId: number; buffer: SharedArrayBuffer }
   | { type: "complete"; runId: number; result?: string }
   | {
       type: "problem";
@@ -28,6 +30,8 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
         Array.isArray(value.entries) &&
         value.entries.every((entry) => typeof entry === "string")
       );
+    case "input":
+      return isSharedArrayBuffer(value.buffer);
     case "complete":
       return value.result === undefined || typeof value.result === "string";
     case "problem":
@@ -41,4 +45,11 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
 
 function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isSharedArrayBuffer(value: unknown): value is SharedArrayBuffer {
+  return (
+    typeof SharedArrayBuffer !== "undefined" &&
+    value instanceof SharedArrayBuffer
+  );
 }

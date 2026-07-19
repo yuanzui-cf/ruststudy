@@ -12,11 +12,12 @@ export interface RunControllerOptions {
   onReset: () => void;
   onOutput: (entries: string[]) => void;
   onProblem: (category: string, message: string) => void;
+  onInput?: (buffer: SharedArrayBuffer) => void;
   onRunningChange: (running: boolean) => void;
 }
 
 const TIMEOUT_MESSAGE =
-  "RuntimeError: Loop execution exceeded the 10-minute time limit.";
+  "RuntimeError: Loop execution exceeded the 10-minute time limit.\r\n";
 
 export class RunController {
   readonly #options: Required<RunControllerOptions>;
@@ -29,10 +30,15 @@ export class RunController {
     this.#options = {
       ...options,
       timeoutMs: options.timeoutMs ?? 600_000,
+      onInput: options.onInput ?? (() => {}),
     };
   }
 
-  run(source: string, preserveEnvironment = false): void {
+  run(
+    source: string,
+    preserveEnvironment = false,
+    inputBuffer?: SharedArrayBuffer,
+  ): void {
     if (this.#activeRunId !== undefined) {
       this.#discardWorker();
     }
@@ -56,6 +62,7 @@ export class RunController {
       runId,
       source,
       preserveEnvironment,
+      ...(inputBuffer === undefined ? {} : { inputBuffer }),
     };
     worker.postMessage(request);
   }
@@ -65,7 +72,7 @@ export class RunController {
       return;
     }
     this.#discardWorker();
-    this.#options.onOutput(["Execution stopped by user."]);
+    this.#options.onOutput(["Execution stopped by user.\r\n"]);
     this.#options.onRunningChange(false);
   }
 
@@ -88,13 +95,17 @@ export class RunController {
       this.#options.onOutput(value.entries);
       return;
     }
+    if (value.type === "input") {
+      this.#options.onInput(value.buffer);
+      return;
+    }
 
     this.#clearActiveRun();
     this.#options.onRunningChange(false);
     if (value.type === "problem") {
       this.#options.onProblem(value.category, value.message);
     } else if (value.result !== undefined && value.result !== "") {
-      this.#options.onOutput([value.result]);
+      this.#options.onOutput([`${value.result}\r\n`]);
     }
   }
 

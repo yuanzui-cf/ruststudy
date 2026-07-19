@@ -26,6 +26,7 @@ function setup(timeoutMs = 600_000) {
   const output: string[] = [];
   const problems: string[] = [];
   const running: boolean[] = [];
+  const requestedInputs: SharedArrayBuffer[] = [];
   const controller = new RunController({
     createWorker: () => {
       const worker = new FakeWorker();
@@ -40,9 +41,10 @@ function setup(timeoutMs = 600_000) {
     onOutput: (entries) => output.push(...entries),
     onProblem: (category, message) =>
       problems.push(`${category}: ${message}`),
+    onInput: (buffer) => requestedInputs.push(buffer),
     onRunningChange: (value) => running.push(value),
   });
-  return { controller, workers, output, problems, running };
+  return { controller, workers, output, problems, requestedInputs, running };
 }
 
 describe("RunController", () => {
@@ -60,7 +62,7 @@ describe("RunController", () => {
     state.controller.run("loop {}", false);
     state.controller.stop();
     expect(state.workers[0]?.terminated).toBe(true);
-    expect(state.output).toEqual(["Execution stopped by user."]);
+    expect(state.output).toEqual(["Execution stopped by user.\r\n"]);
   });
 
   test("timeout terminates and reports the required RuntimeError", async () => {
@@ -69,8 +71,50 @@ describe("RunController", () => {
     await Bun.sleep(15);
     expect(state.workers[0]?.terminated).toBe(true);
     expect(state.output).toEqual([
-      "RuntimeError: Loop execution exceeded the 10-minute time limit.",
+      "RuntimeError: Loop execution exceeded the 10-minute time limit.\r\n",
     ]);
+  });
+
+  test("forwards an input buffer in run requests", () => {
+    const state = setup();
+    const inputBuffer = new SharedArrayBuffer(16);
+    state.controller.run("input()", false, inputBuffer);
+    expect(state.workers[0]?.messages[0]).toEqual({
+      type: "run",
+      runId: 1,
+      source: "input()",
+      preserveEnvironment: false,
+      inputBuffer,
+    });
+    state.controller.dispose();
+  });
+
+  test("routes current input requests without ending the run", async () => {
+    const state = setup(5);
+    state.controller.run("input()", false, new SharedArrayBuffer(16));
+    const worker = state.workers[0]!;
+    const inputBuffer = new SharedArrayBuffer(16);
+    worker.emit({ type: "input", runId: 1, buffer: inputBuffer });
+    expect(state.requestedInputs).toEqual([inputBuffer]);
+    expect(state.running).toEqual([true]);
+    expect(worker.terminated).toBe(false);
+    await Bun.sleep(15);
+    expect(worker.terminated).toBe(true);
+    expect(state.running).toEqual([true, false]);
+  });
+
+  test("ignores stale input requests", () => {
+    const state = setup();
+    state.controller.run("input()", false, new SharedArrayBuffer(16));
+    const first = state.workers[0]!;
+    state.controller.run("input()", false, new SharedArrayBuffer(16));
+    first.emit({
+      type: "input",
+      runId: 1,
+      buffer: new SharedArrayBuffer(16),
+    });
+    expect(state.requestedInputs).toEqual([]);
+    state.controller.dispose();
   });
 
   test("ignores stale run messages", () => {
@@ -115,7 +159,7 @@ describe("RunController", () => {
 
     state.controller.run("40 + 2", false);
     worker.emit({ type: "complete", runId: 2, result: "42" });
-    expect(state.output).toEqual(["42"]);
+    expect(state.output).toEqual(["42\r\n"]);
     state.controller.dispose();
   });
 });

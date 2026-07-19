@@ -17,6 +17,13 @@ test("accepts complete typed worker responses", () => {
       message: "bad value",
     }),
   ).toBe(true);
+  expect(
+    isWorkerResponse({
+      type: "input",
+      runId: 4,
+      buffer: new SharedArrayBuffer(16),
+    }),
+  ).toBe(true);
 });
 
 test("rejects malformed worker responses", () => {
@@ -26,4 +33,11 @@ test("rejects malformed worker responses", () => {
   );
   expect(isWorkerResponse({ type: "complete" })).toBe(false);
   expect(isWorkerResponse({ type: "unknown", runId: 1 })).toBe(false);
+  expect(
+    isWorkerResponse({
+      type: "input",
+      runId: 4,
+      buffer: new ArrayBuffer(16),
+    }),
+  ).toBe(false);
 });
