@@ -102,6 +102,7 @@ export class TerminalWindow {
         this.pendingInput = undefined;
       } else {
         pending.value = result.submitted;
+        this.terminal.write("\x07");
       }
     } catch (error) {
       if (error instanceof Error && error.message === CAPACITY_ERROR) {

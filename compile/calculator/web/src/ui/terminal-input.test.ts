@@ -43,6 +43,20 @@ test("ignores C0 and ANSI control sequences", () => {
   });
 });
 
+test("ignores OSC control strings terminated by BEL", () => {
+  expect(applyTerminalInput("ab", "\x1b]0;title\x07")).toEqual({
+    value: "ab",
+    echo: "",
+  });
+});
+
+test("ignores DCS control strings terminated by ST", () => {
+  expect(applyTerminalInput("ab", "\x1bPpayload\x1b\\")).toEqual({
+    value: "ab",
+    echo: "",
+  });
+});
+
 test("processes backspace, text, and enter in one data event", () => {
   expect(applyTerminalInput("cat", "\x7fdog\r")).toEqual({
     value: "",
