@@ -20,13 +20,13 @@ call_expr ::= base_expr ( "(" ( expr ( "," expr )* )? ")" )*
 base_expr ::= literal
 			| identifier
 			| block
-			| condition_expr
-			| loop_expr
-			| fn_expr
+			| block_like_expr
 			| "(" expr ")"
 
 define ::= "let" identifier ( "=" expr )?
 assignment ::= identifier "=" expr
+
+block_like_expr ::= condition_expr | loop_expr | fn_expr
 
 block ::= "{" statement* expr? "}"
 
@@ -44,5 +44,6 @@ statement ::= ( assignment
 				| continue
 				| return
 				| expr )? ";"
+			  | block_like_expr ";"?
 
 program ::= statement* expr?

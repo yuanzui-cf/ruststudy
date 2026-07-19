@@ -152,6 +152,8 @@ impl Parser {
             if self.peek()? == &Token::Semi {
                 self.consume()?;
                 statements.push(res);
+            } else if res.is_statement_without_semi() && self.peek()? != &end_tok {
+                statements.push(res);
             } else {
                 expr = Some(Box::new(res));
                 break;

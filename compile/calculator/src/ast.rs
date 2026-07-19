@@ -179,6 +179,13 @@ pub enum ASTNode {
 }
 
 impl ASTNode {
+    pub fn is_statement_without_semi(&self) -> bool {
+        matches!(
+            self,
+            Self::Condition(_, _, _) | Self::Loop(_) | Self::Fn(_, _, _)
+        )
+    }
+
     pub fn eval(&self, env: Rc<RefCell<Environment>>, ctx: Context) -> Result<Value> {
         match self {
             Self::Value(val) => Ok(val.clone()),
