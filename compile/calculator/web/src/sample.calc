@@ -1,0 +1,6 @@
+// JavaScript Math host functions and calclang prelude
+let angle = PI / 3;
+println("sin(PI / 3) = " + sin(angle));
+println("min(8, 3) = " + min(8, 3));
+
+sqrt(2)

@@ -6,7 +6,74 @@
     <title>Calclang Playground</title>
   </head>
   <body>
-    <main id="app">Calclang Playground</main>
+    <div id="app" class="vs-shell">
+      <header class="title-bar">
+        Calclang Playground — Microsoft Visual Studio
+      </header>
+      <nav class="menu-bar" aria-label="Application menu">
+        <span>File</span>
+        <span>Edit</span>
+        <span>View</span>
+        <span>Run</span>
+        <span>Help</span>
+      </nav>
+      <div class="command-bar">
+        <button id="run-button" type="button">▶ Run</button>
+        <button id="stop-button" type="button" disabled>■ Stop</button>
+        <span class="target">calclang.wasm</span>
+      </div>
+      <main class="workspace">
+        <section class="editor-pane" aria-label="Editor">
+          <div class="document-tabs">
+            <span id="dirty-indicator" aria-hidden="true">●</span>
+            main.calc
+          </div>
+          <div id="editor" aria-label="Calclang editor"></div>
+        </section>
+        <section class="tool-pane" aria-label="Tool window">
+          <div class="tool-tabs" role="tablist" aria-label="Tool windows">
+            <button
+              id="output-tab"
+              type="button"
+              role="tab"
+              aria-controls="output"
+              aria-selected="true"
+            >
+              Output
+            </button>
+            <button
+              id="problems-tab"
+              type="button"
+              role="tab"
+              aria-controls="problems"
+              aria-selected="false"
+            >
+              Problems <span id="problem-count">0</span>
+            </button>
+          </div>
+          <div
+            id="output"
+            class="tool-content"
+            role="tabpanel"
+            aria-labelledby="output-tab"
+          ></div>
+          <div
+            id="problems"
+            class="tool-content"
+            role="tabpanel"
+            aria-labelledby="problems-tab"
+            hidden
+          ></div>
+        </section>
+      </main>
+      <footer class="status-bar">
+        <span>Fresh environment</span>
+        <span id="wasm-status">WASM ready</span>
+        <span id="cursor-position">Ln 1, Col 1</span>
+        <span>Spaces: 4</span>
+        <span>UTF-8</span>
+      </footer>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
