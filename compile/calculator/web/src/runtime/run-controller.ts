@@ -20,7 +20,7 @@ const TIMEOUT_MESSAGE =
   "RuntimeError: Loop execution exceeded the 10-minute time limit.\r\n";
 
 export class RunController {
-  readonly #options: Required<RunControllerOptions>;
+  readonly #options: RunControllerOptions & { timeoutMs: number };
   #worker: WorkerLike | undefined;
   #activeRunId: number | undefined;
   #nextRunId = 1;
@@ -30,7 +30,6 @@ export class RunController {
     this.#options = {
       ...options,
       timeoutMs: options.timeoutMs ?? 600_000,
-      onInput: options.onInput ?? (() => {}),
     };
   }
 
@@ -96,6 +95,15 @@ export class RunController {
       return;
     }
     if (value.type === "input") {
+      if (this.#options.onInput === undefined) {
+        this.#discardWorker();
+        this.#options.onRunningChange(false);
+        this.#options.onProblem(
+          "RuntimeError",
+          "Terminal input handler is unavailable",
+        );
+        return;
+      }
       this.#options.onInput(value.buffer);
       return;
     }

@@ -21,7 +21,7 @@ class FakeWorker implements WorkerLike {
   }
 }
 
-function setup(timeoutMs = 600_000) {
+function setup(timeoutMs = 600_000, withInputHandler = true) {
   const workers: FakeWorker[] = [];
   const output: string[] = [];
   const problems: string[] = [];
@@ -41,7 +41,9 @@ function setup(timeoutMs = 600_000) {
     onOutput: (entries) => output.push(...entries),
     onProblem: (category, message) =>
       problems.push(`${category}: ${message}`),
-    onInput: (buffer) => requestedInputs.push(buffer),
+    ...(withInputHandler
+      ? { onInput: (buffer: SharedArrayBuffer) => requestedInputs.push(buffer) }
+      : {}),
     onRunningChange: (value) => running.push(value),
   });
   return { controller, workers, output, problems, requestedInputs, running };
@@ -100,6 +102,36 @@ describe("RunController", () => {
     expect(worker.terminated).toBe(false);
     await Bun.sleep(15);
     expect(worker.terminated).toBe(true);
+    expect(state.running).toEqual([true, false]);
+  });
+
+  test("fails fast when no terminal input handler is available", () => {
+    const state = setup(600_000, false);
+    state.controller.run("input()", false, new SharedArrayBuffer(16));
+    const worker = state.workers[0]!;
+    worker.emit({
+      type: "input",
+      runId: 1,
+      buffer: new SharedArrayBuffer(16),
+    });
+    expect(worker.terminated).toBe(true);
+    expect(state.problems).toEqual([
+      "RuntimeError: Terminal input handler is unavailable",
+    ]);
+    expect(state.running).toEqual([true, false]);
+  });
+
+  test("ignores input requests that arrive after stop", () => {
+    const state = setup();
+    state.controller.run("input()", false, new SharedArrayBuffer(16));
+    const worker = state.workers[0]!;
+    state.controller.stop();
+    worker.emit({
+      type: "input",
+      runId: 1,
+      buffer: new SharedArrayBuffer(16),
+    });
+    expect(state.requestedInputs).toEqual([]);
     expect(state.running).toEqual([true, false]);
   });
 
