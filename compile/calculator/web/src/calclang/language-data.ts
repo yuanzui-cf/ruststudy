@@ -102,7 +102,12 @@ const constants = [
 }));
 
 const hostFunctions = [
+  "print",
   "println",
+  "input",
+  "float",
+  "string",
+  "bool",
   "typeof",
   "sin",
   "cos",

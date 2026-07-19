@@ -48,12 +48,31 @@ function typeName(value: unknown): string {
   throw new TypeError("Unsupported calclang host value");
 }
 
-export function createHostFunctions(emit: (line: string) => void) {
+export function createHostFunctions(
+  emit: (chunk: string) => void,
+  readLine: () => string = () => {
+    throw new Error("input() is unavailable");
+  },
+) {
   return {
-    println: (...values: unknown[]) => {
+    print: (...values: unknown[]) => {
       emit(values.map(display).join(""));
       return undefined;
     },
+    println: (...values: unknown[]) => {
+      emit(`${values.map(display).join("")}\r\n`);
+      return undefined;
+    },
+    input: (...values: unknown[]) => {
+      const prompt = values.map(display).join("");
+      if (prompt !== "") {
+        emit(prompt);
+      }
+      return readLine();
+    },
+    float: Number,
+    string: String,
+    bool: Boolean,
     typeof: (...values: unknown[]) => {
       if (values.length !== 1) {
         throw new Error(`Expect one arg in typeof, found ${values.length}`);

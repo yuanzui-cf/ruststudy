@@ -9,11 +9,32 @@ describe("host environment", () => {
     expect(functions.sqrt(9)).toBe(3);
   });
 
-  test("println concatenates with calclang display semantics", () => {
-    const lines: string[] = [];
-    const functions = createHostFunctions((line) => lines.push(line));
-    functions.println("answer=", 42, undefined);
-    expect(lines).toEqual(["answer=42"]);
+  test("print and println concatenate with calclang display semantics", () => {
+    const chunks: string[] = [];
+    const functions = createHostFunctions(
+      (chunk) => chunks.push(chunk),
+      () => "",
+    );
+    functions.print("answer=", 42);
+    functions.println(" done");
+    expect(chunks).toEqual(["answer=42", " done\r\n"]);
+  });
+
+  test("input emits a prompt and reads a line", () => {
+    const chunks: string[] = [];
+    const functions = createHostFunctions(
+      (chunk) => chunks.push(chunk),
+      () => "Leo",
+    );
+    expect(functions.input("Name: ")).toBe("Leo");
+    expect(chunks).toEqual(["Name: "]);
+  });
+
+  test("converts values to calclang primitives", () => {
+    const functions = createHostFunctions(() => {}, () => "");
+    expect(functions.float("3.5")).toBe(3.5);
+    expect(functions.string(42)).toBe("42");
+    expect(functions.bool(0)).toBe(false);
   });
 
   test("typeof understands primitives and function descriptors", () => {

@@ -43,7 +43,12 @@ describe("calclang language data", () => {
 
   test("completes host and prelude names", () => {
     for (const name of [
+      "print",
       "println",
+      "input",
+      "float",
+      "string",
+      "bool",
       "typeof",
       "PI",
       "sin",
