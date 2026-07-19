@@ -14,6 +14,7 @@ use crate::{
 pub enum Value {
     Float(f64),
     Bool(bool),
+    String(String),
     Fn(Vec<String>, Rc<ASTNode>, Rc<RefCell<Environment>>),
     BuiltIn(BuiltIn),
     None,
@@ -26,6 +27,7 @@ impl PartialEq for Value {
         match (self, other) {
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
             (Value::None, Value::None) => true,
             (Value::Fn(_, block1, env1), Value::Fn(_, block2, env2)) => {
                 Rc::ptr_eq(block1, block2) && Rc::ptr_eq(env1, env2)
@@ -40,6 +42,7 @@ impl Display for Value {
         match self {
             Self::Float(num) => write!(f, "{num}"),
             Self::Bool(val) => write!(f, "{val}"),
+            Self::String(str) => write!(f, "{str}"),
             Self::Fn(_, _, _) | Self::BuiltIn(_) => write!(f, "fn"),
             Self::None => write!(f, "none"),
         }
@@ -51,6 +54,7 @@ impl Value {
         match self {
             Self::Float(_) => "float".into(),
             Self::Bool(_) => "bool".into(),
+            Self::String(_) => "string".into(),
             Self::Fn(l, _, _) => format!("fn({})", l.join(",")),
             Self::BuiltIn(_) => "fn".into(),
             Self::None => "none".into(),
@@ -74,6 +78,33 @@ impl Value {
                 _ => Err(error::error!(
                     Type,
                     "Cannot apply `{op}` on float and float",
+                )),
+            },
+            (Self::String(l), r) => match op {
+                Op::Add => {
+                    let mut buf = l.clone();
+                    buf.push_str(&format!("{r}"));
+                    Ok(Self::String(buf))
+                }
+                Op::Eq | Op::Neq => {
+                    if let Self::String(r) = r {
+                        Ok(Self::Bool(match op {
+                            Op::Eq => l == r,
+                            Op::Neq => l != r,
+                            _ => unreachable!("op is eq or neq"),
+                        }))
+                    } else {
+                        Err(error::error!(
+                            Type,
+                            "Cannot apply `{op}` on string and {}",
+                            r.type_name()
+                        ))
+                    }
+                }
+                _ => Err(error::error!(
+                    Type,
+                    "Cannot apply `{op}` on string and {}",
+                    r.type_name()
                 )),
             },
             (l, r) if l.type_name() == r.type_name() => match op {

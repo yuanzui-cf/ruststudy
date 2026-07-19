@@ -1,12 +1,16 @@
 letter ::= [a-zA-Z_]
 digit ::= [0-9]
 identifier ::= letter ( letter | digit )*
+char ::= #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
 
-literal ::= float | bool | none
+literal ::= float_literal | bool_literal | string_literal | none_literal
 
-float ::= digit+ ( "." digit* )? | "." digit+
-bool ::= "true" | "false"
-none ::= "none"
+float_literal ::= digit+ ( "." digit* )? | "." digit+
+bool_literal ::= "true" | "false"
+string_literal ::= '"' (char - '"' | escape_sequence )* '"'
+none_literal ::= "none"
+
+escape_sequence ::= '\' [tnr"'\\]
 
 expr ::= or_expr
 or_expr ::= and_expr ( "or" and_expr )*

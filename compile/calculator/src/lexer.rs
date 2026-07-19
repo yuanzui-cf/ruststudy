@@ -226,8 +226,44 @@ impl Lexer {
                 }
                 Some(';') => tokens.push(Token::Semi),
                 Some(',') => tokens.push(Token::Comma),
-                // Some('/') => {
-                // }
+                Some('"') => {
+                    let mut string_buf = String::new();
+                    let mut is_closed = false;
+
+                    while let Some(c) = expr.next() {
+                        match c {
+                            '"' => {
+                                is_closed = true;
+                                break;
+                            }
+                            '\n' => break,
+                            '\\' => match expr.next() {
+                                Some('t') => string_buf.push('\t'),
+                                Some('n') => string_buf.push('\n'),
+                                Some('r') => string_buf.push('\r'),
+                                Some('"') => string_buf.push('"'),
+                                Some('\'') => string_buf.push('\''),
+                                Some('\\') => string_buf.push('\\'),
+                                Some(other) => string_buf.push(other),
+                                None => {
+                                    return Err(error::error!(
+                                        Syntax,
+                                        "Unterminated escape sequence at end of file"
+                                    ));
+                                }
+                            },
+                            _ => {
+                                string_buf.push(c);
+                            }
+                        }
+                    }
+
+                    if !is_closed {
+                        return Err(error::error!(Syntax, "Unterminated string literal"));
+                    }
+
+                    tokens.push(Token::Value(Value::String(string_buf)));
+                }
                 Some(other) if other.is_whitespace() => {
                     continue;
                 }

@@ -112,7 +112,13 @@ fn main() -> anyhow::Result<()> {
 
                     match parser.parse() {
                         Ok(res) => match res.eval(env.clone(), Context::default()) {
-                            Ok(res) => println!("{res}"),
+                            Ok(res) => println!(
+                                "{res}",
+                                res = match res {
+                                    calclang::ast::Value::None => "".into(),
+                                    o => format!("{o}"),
+                                }
+                            ),
                             Err(e) => {
                                 eprintln!("{e}")
                             }
