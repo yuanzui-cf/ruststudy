@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use calclang::{
     ctx::Context,
     env::Environment,
