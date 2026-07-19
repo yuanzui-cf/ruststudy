@@ -57,6 +57,13 @@ test("ignores DCS control strings terminated by ST", () => {
   });
 });
 
+test("ends C1 control strings at an eight-bit ST", () => {
+  expect(applyTerminalInput("ab", "\u009dtitle\u009cZ")).toEqual({
+    value: "abZ",
+    echo: "Z",
+  });
+});
+
 test("processes backspace, text, and enter in one data event", () => {
   expect(applyTerminalInput("cat", "\x7fdog\r")).toEqual({
     value: "",

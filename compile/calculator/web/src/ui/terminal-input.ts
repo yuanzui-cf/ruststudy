@@ -19,6 +19,11 @@ export function applyTerminalInput(
     const codePoint = character.codePointAt(0) ?? 0;
 
     if (escapeState === "string") {
+      if (codePoint === 0x9c) {
+        escapeState = "none";
+        stringEscape = false;
+        continue;
+      }
       if (stringEscape) {
         if (character === "\\") {
           escapeState = "none";
