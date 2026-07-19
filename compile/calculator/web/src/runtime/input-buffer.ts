@@ -73,7 +73,9 @@ export function readResolvedInput(buffer: SharedArrayBuffer): string {
     if (length < 0 || length > payload.byteLength) {
       throw new Error("Invalid terminal input length");
     }
-    return decoder.decode(payload.subarray(0, length));
+    const bytes = new Uint8Array(length);
+    bytes.set(payload.subarray(0, length));
+    return decoder.decode(bytes);
   } finally {
     resetIdle(header);
   }

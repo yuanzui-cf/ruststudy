@@ -26,6 +26,34 @@ test("resolves UTF-8 input and resets the buffer after reading", () => {
   expect(Atomics.load(header, INPUT_LENGTH_INDEX)).toBe(0);
 });
 
+test("copies resolved input out of shared memory before decoding", () => {
+  const originalDecode = TextDecoder.prototype.decode;
+  TextDecoder.prototype.decode = function (...args) {
+    const [input] = args;
+    if (
+      input !== undefined &&
+      ArrayBuffer.isView(input) &&
+      input.buffer instanceof SharedArrayBuffer
+    ) {
+      throw new TypeError(
+        "The provided ArrayBufferView value must not be shared",
+      );
+    }
+    return originalDecode.apply(this, args);
+  };
+
+  try {
+    const buffer = createInputBuffer(32);
+    const header = new Int32Array(buffer, 0, 2);
+    Atomics.store(header, INPUT_STATE_INDEX, INPUT_WAITING);
+
+    expect(resolveInput(buffer, "Chrome 你好")).toBe(true);
+    expect(readResolvedInput(buffer)).toBe("Chrome 你好");
+  } finally {
+    TextDecoder.prototype.decode = originalDecode;
+  }
+});
+
 test("accepts input at the exact UTF-8 byte boundary and empty input", () => {
   const buffer = createInputBuffer(6);
   const header = new Int32Array(buffer, 0, 2);
