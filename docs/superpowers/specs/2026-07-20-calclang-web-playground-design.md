@@ -136,6 +136,10 @@ The shell follows the dense Visual Studio 2022 dark industrial style, not the VS
 
 The browser page does not customize Monaco's internal CSS. Monaco uses its built-in `vs-dark` theme and its normal editor chrome. The surrounding shell supplies the Visual Studio styling.
 
+The styling is a visual reference only. User-facing text and metadata use the
+Calclang name and do not contain `Microsoft`, `Visual Studio`, or other
+third-party product branding.
+
 The status bar may show the fresh-environment mode, WASM readiness, cursor position, indentation, and encoding. It does not show run duration or a message such as “Process running in isolated Web Worker.” Run remains available so it can replace an active execution; Stop is enabled only while a run is active.
 
 ## Monaco Language Support
@@ -162,6 +166,10 @@ Completion contains:
 - `min` and `max` from the prelude.
 
 Completion is syntax-aware only at the normal Monaco word level. Live parsing, live diagnostics, semantic analysis, and formatting are outside this version.
+The Monaco entry point must load the suggest and snippet editor contributions,
+so registered completion providers produce a visible completion widget and
+snippet insertion works in the browser. Bundle-size optimization must not
+remove these contributions.
 
 ## Errors and Recovery
 
@@ -176,6 +184,8 @@ Rust tests cover existing lexer, parser, environment, and evaluator behavior plu
 Bun tests cover pure TypeScript modules:
 
 - EBNF-derived token patterns and the complete completion inventory;
+- a browser smoke test that invokes Monaco completion and observes a Calclang
+  host or prelude suggestion;
 - Run replacing an active Worker;
 - source edits leaving an active Worker untouched;
 - manual Stop;
