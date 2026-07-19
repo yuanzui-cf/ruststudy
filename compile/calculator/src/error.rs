@@ -24,6 +24,28 @@ pub enum InternalError {
     FunctionReturn(Option<Value>),
 }
 
+impl Error {
+    pub fn category(&self) -> &'static str {
+        match self {
+            Self::Syntax(_) => "SyntaxError",
+            Self::Type(_) => "TypeError",
+            Self::Name(_) => "NameError",
+            Self::Runtime(_) => "RuntimeError",
+            Self::Internal(_) => "InternalError",
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            Self::Syntax(message)
+            | Self::Type(message)
+            | Self::Name(message)
+            | Self::Runtime(message) => message.clone(),
+            Self::Internal(_) => "Internal interpreter control flow escaped".into(),
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[doc(hidden)]
