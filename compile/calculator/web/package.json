@@ -1,0 +1,20 @@
+{
+  "name": "calclang-playground",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "wasm": "wasm-pack build .. --target web --out-dir web/src/generated/calclang --out-name calclang --release --no-default-features",
+    "dev": "bun run wasm && vite",
+    "test": "bun test",
+    "build": "bun run wasm && tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "monaco-editor": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "happy-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}

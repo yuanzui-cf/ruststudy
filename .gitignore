@@ -8,3 +8,8 @@ config.toml
 .idea
 .zed
 .vscode
+
+.superpowers/
+compile/calculator/web/node_modules/
+compile/calculator/web/dist/
+compile/calculator/web/src/generated/

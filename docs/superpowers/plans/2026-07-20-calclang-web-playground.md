@@ -811,12 +811,11 @@ compile/calculator/web/src/generated/
 Run from compile/calculator/web:
 
 ~~~text
-bun test
 bun run wasm
 bun run build
 ~~~
 
-Expected: zero Bun test failures, wasm-pack generates bindings, and Vite produces dist without TypeScript errors.
+Expected: wasm-pack generates bindings and Vite produces dist without TypeScript errors. Bun tests begin in Task 5, after the first test file exists.
 
 - [ ] **Step 6: Commit**
 
