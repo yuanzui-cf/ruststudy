@@ -113,6 +113,8 @@ impl Parser {
                         }
                     }
                     Token::Continue => {
+                        self.consume()?;
+
                         if !matches!(self.peek()?, Token::Semi) {
                             return Err(error::error!(
                                 Syntax,
