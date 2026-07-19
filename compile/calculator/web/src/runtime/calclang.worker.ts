@@ -3,6 +3,7 @@
 import init, { WasmInterpreter } from "../generated/calclang/calclang";
 import { HOST_CONSTANTS, createHostFunctions } from "../calclang/host";
 import prelude from "../calclang/prelude.calc?raw";
+import { waitForInput } from "./input-buffer";
 import { OutputBatcher } from "./output-batcher";
 import type { RunRequest, WorkerResponse } from "./protocol";
 
@@ -14,14 +15,17 @@ function post(message: WorkerResponse): void {
   scope.postMessage(message);
 }
 
-function createInterpreter(batcher: OutputBatcher): WasmInterpreter {
+function createInterpreter(
+  batcher: OutputBatcher,
+  readLine: () => string,
+): WasmInterpreter {
   const runtime = new WasmInterpreter();
   try {
     for (const [name, value] of Object.entries(HOST_CONSTANTS)) {
       runtime.define_value(name, value);
     }
     for (const [name, callback] of Object.entries(
-      createHostFunctions((line) => batcher.push(line)),
+      createHostFunctions((line) => batcher.push(line), readLine),
     )) {
       runtime.define_host_function(name, callback);
     }
@@ -42,15 +46,24 @@ scope.onmessage = async (event: MessageEvent<RunRequest>) => {
   const batcher = new OutputBatcher((entries) => {
     post({ type: "output", runId: request.runId, entries });
   });
+  const readLine = (): string => {
+    if (request.inputBuffer === undefined) {
+      throw new Error("input() requires cross-origin isolation");
+    }
+    batcher.flush();
+    return waitForInput(request.inputBuffer, () =>
+      post({ type: "input", runId: request.runId, buffer: request.inputBuffer! }),
+    );
+  };
 
   try {
     await wasmReady;
     if (!request.preserveEnvironment || interpreter === undefined) {
       interpreter?.free();
-      interpreter = createInterpreter(batcher);
+      interpreter = createInterpreter(batcher, readLine);
     } else {
       for (const [name, callback] of Object.entries(
-        createHostFunctions((line) => batcher.push(line)),
+        createHostFunctions((line) => batcher.push(line), readLine),
       )) {
         interpreter.define_host_function(name, callback);
       }

@@ -3,8 +3,11 @@ import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 
 import sampleSource from "./sample.calc?raw";
 import { registerCalclang } from "./calclang/language";
+import "@xterm/xterm/css/xterm.css";
+import { createInputBuffer } from "./runtime/input-buffer";
 import { RunController } from "./runtime/run-controller";
 import { OutputWindow } from "./ui/output-window";
+import { TerminalWindow } from "./ui/terminal-window";
 import "./styles.css";
 
 self.MonacoEnvironment = {
@@ -19,14 +22,14 @@ function required<T extends HTMLElement>(id: string): T {
   return element as T;
 }
 
-type ToolName = "output" | "problems";
+type ToolName = "terminal" | "problems";
 
 const editorContainer = required<HTMLDivElement>("editor");
 const runButton = required<HTMLButtonElement>("run-button");
 const stopButton = required<HTMLButtonElement>("stop-button");
-const outputTab = required<HTMLButtonElement>("output-tab");
+const terminalTab = required<HTMLButtonElement>("terminal-tab");
 const problemsTab = required<HTMLButtonElement>("problems-tab");
-const outputPanel = required<HTMLDivElement>("output");
+const terminalPanel = required<HTMLDivElement>("terminal");
 const problemsPanel = required<HTMLDivElement>("problems");
 const problemCount = required<HTMLSpanElement>("problem-count");
 const dirtyIndicator = required<HTMLSpanElement>("dirty-indicator");
@@ -37,11 +40,11 @@ function setProblemCount(count: number): void {
 }
 
 function selectTool(selected: ToolName): void {
-  const outputSelected = selected === "output";
-  outputTab.setAttribute("aria-selected", String(outputSelected));
-  problemsTab.setAttribute("aria-selected", String(!outputSelected));
-  outputPanel.hidden = !outputSelected;
-  problemsPanel.hidden = outputSelected;
+  const terminalSelected = selected === "terminal";
+  terminalTab.setAttribute("aria-selected", String(terminalSelected));
+  problemsTab.setAttribute("aria-selected", String(!terminalSelected));
+  terminalPanel.hidden = !terminalSelected;
+  problemsPanel.hidden = terminalSelected;
 }
 
 registerCalclang(monaco);
@@ -54,7 +57,7 @@ const editor = monaco.editor.create(editorContainer, {
   fontFamily: "Consolas, 'Courier New', monospace",
 });
 
-const output = new OutputWindow(outputPanel);
+const terminal = new TerminalWindow(terminalPanel);
 const problems = new OutputWindow(problemsPanel);
 
 const controller = new RunController({
@@ -63,12 +66,13 @@ const controller = new RunController({
       type: "module",
     }),
   onReset: () => {
-    output.clear();
+    terminal.reset();
     problems.clear();
     setProblemCount(0);
-    selectTool("output");
+    selectTool("terminal");
   },
-  onOutput: (entries) => output.append(entries),
+  onOutput: (entries) => terminal.write(entries),
+  onInput: (buffer) => terminal.requestInput(buffer),
   onProblem: (category, message) => {
     problems.append([`${category}: ${message}`], "problem-entry");
     setProblemCount(1);
@@ -76,14 +80,19 @@ const controller = new RunController({
   },
   onRunningChange: (running) => {
     stopButton.disabled = !running;
+    if (!running) {
+      terminal.cancelInput();
+    }
   },
 });
 
 runButton.addEventListener("click", () => {
-  controller.run(editor.getValue(), false);
+  const inputBuffer =
+    typeof SharedArrayBuffer === "undefined" ? undefined : createInputBuffer();
+  controller.run(editor.getValue(), false, inputBuffer);
 });
 stopButton.addEventListener("click", () => controller.stop());
-outputTab.addEventListener("click", () => selectTool("output"));
+terminalTab.addEventListener("click", () => selectTool("terminal"));
 problemsTab.addEventListener("click", () => selectTool("problems"));
 
 editor.onDidChangeModelContent(() => {
@@ -95,5 +104,6 @@ editor.onDidChangeCursorPosition(({ position }) => {
 
 window.addEventListener("beforeunload", () => {
   controller.dispose();
+  terminal.dispose();
   editor.dispose();
 });

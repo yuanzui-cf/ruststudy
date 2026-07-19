@@ -26,3 +26,11 @@ bun run build
 ```
 
 The generated site is written to `compile/calculator/web/dist`.
+
+Production hosting must send both headers below for `input()` to work in the
+interactive terminal:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
