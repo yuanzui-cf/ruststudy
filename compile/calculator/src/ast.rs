@@ -20,7 +20,33 @@ pub enum Value {
     None,
 }
 
-pub type BuiltIn = fn(Vec<Value>) -> Result<Value>;
+#[derive(Clone)]
+pub struct BuiltIn(Rc<dyn Fn(Vec<Value>) -> Result<Value>>);
+
+impl Debug for BuiltIn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BuiltIn(..)")
+    }
+}
+
+impl PartialEq for BuiltIn {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl BuiltIn {
+    pub fn new<F>(callback: F) -> Self
+    where
+        F: Fn(Vec<Value>) -> Result<Value> + 'static,
+    {
+        Self(Rc::new(callback))
+    }
+
+    pub fn call(&self, values: Vec<Value>) -> Result<Value> {
+        (self.0)(values)
+    }
+}
 
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
@@ -431,7 +457,7 @@ impl ASTNode {
 
                 let (args, block, f_env) = match expr {
                     Value::Fn(args, block, f_env) => (args, block, f_env),
-                    Value::BuiltIn(build_in) => return build_in(evaluated_vals),
+                    Value::BuiltIn(build_in) => return build_in.call(evaluated_vals),
                     _ => unreachable!("expr is function"),
                 };
 

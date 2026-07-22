@@ -70,7 +70,11 @@ impl Environment {
         self.store.insert(name.into(), val);
     }
 
-    pub fn define_builtin(&mut self, name: &str, val: BuiltIn) {
-        self.store.insert(name.into(), Value::BuiltIn(val));
+    pub fn define_builtin<F>(&mut self, name: &str, val: F)
+    where
+        F: Fn(Vec<Value>) -> Result<Value> + 'static,
+    {
+        self.store
+            .insert(name.into(), Value::BuiltIn(BuiltIn::new(val)));
     }
 }
