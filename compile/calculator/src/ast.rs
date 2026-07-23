@@ -12,6 +12,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum Value {
+    Integer(i64),
     Float(f64),
     Bool(bool),
     String(String),
@@ -51,6 +52,7 @@ impl BuiltIn {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::String(a), Value::String(b)) => a == b,
@@ -66,6 +68,7 @@ impl PartialEq for Value {
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Integer(num) => write!(f, "{num}"),
             Self::Float(num) => write!(f, "{num}"),
             Self::Bool(val) => write!(f, "{val}"),
             Self::String(str) => write!(f, "{str}"),
@@ -77,6 +80,7 @@ impl Display for Value {
 impl Value {
     pub fn type_name(&self) -> String {
         match self {
+            Self::Integer(_) => "integer".into(),
             Self::Float(_) => "float".into(),
             Self::Bool(_) => "bool".into(),
             Self::String(_) => "string".into(),
@@ -88,6 +92,23 @@ impl Value {
 
     pub fn apply_binary(self, op: &Op, other: Self) -> Result<Self> {
         match (self, other) {
+            (Self::Integer(l), Self::Integer(r)) => match op {
+                Op::Add => Ok(Self::Integer(l + r)),
+                Op::Sub => Ok(Self::Integer(l - r)),
+                Op::Mul => Ok(Self::Integer(l * r)),
+                Op::Div => Ok(Self::Integer(l / r)),
+                Op::Exp => Ok(Self::Float((l as f64).powf(r as f64))),
+                Op::Lt => Ok(Self::Bool(l < r)),
+                Op::Le => Ok(Self::Bool(l <= r)),
+                Op::Gt => Ok(Self::Bool(l > r)),
+                Op::Ge => Ok(Self::Bool(l >= r)),
+                Op::Eq => Ok(Self::Bool(l == r)),
+                Op::Neq => Ok(Self::Bool(l != r)),
+                _ => Err(error::error!(
+                    Type,
+                    "Cannot apply `{op}` on integer and integer",
+                )),
+            },
             (Self::Float(l), Self::Float(r)) => match op {
                 Op::Add => Ok(Self::Float(l + r)),
                 Op::Sub => Ok(Self::Float(l - r)),
@@ -304,6 +325,7 @@ impl ASTNode {
 
                 Ok(match res {
                     Value::Float(num) => Value::Float(-num),
+                    Value::Integer(num) => Value::Integer(-num),
                     o => {
                         return Err(error::error!(
                             Type,

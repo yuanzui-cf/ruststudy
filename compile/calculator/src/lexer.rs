@@ -82,8 +82,13 @@ impl Display for Token {
 pub struct Lexer;
 
 impl Lexer {
-    fn get_float(expr: &mut Peekable<Chars<'_>>, first_chr: char, is_decimal: bool) -> Result<f64> {
+    fn get_number(
+        expr: &mut Peekable<Chars<'_>>,
+        first_chr: char,
+        is_decimal: bool,
+    ) -> Result<Value> {
         let mut is_decimal = is_decimal;
+        let mut is_float = is_decimal;
         let mut res = String::new();
         res.push(first_chr);
 
@@ -99,6 +104,7 @@ impl Lexer {
                     return Err(error::error!(Syntax, "Invalid syntax `.` found"));
                 } else {
                     is_decimal = true;
+                    is_float = true;
                 }
             }
 
@@ -107,6 +113,7 @@ impl Lexer {
 
         if let Some(&'e' | &'E') = expr.peek() {
             res.push(expr.next().unwrap());
+            is_float = true;
 
             if let Some(&'+' | &'-') = expr.peek() {
                 res.push(expr.next().unwrap());
@@ -126,9 +133,17 @@ impl Lexer {
             }
         }
 
-        let num = res
-            .parse::<f64>()
-            .map_err(|e| error::error!(Syntax, "Failed to parse {res} as number: {e}"))?;
+        let num = if is_float {
+            Value::Float(
+                res.parse::<f64>()
+                    .map_err(|e| error::error!(Syntax, "Failed to parse {res} as float: {e}"))?,
+            )
+        } else {
+            Value::Integer(
+                res.parse::<i64>()
+                    .map_err(|e| error::error!(Syntax, "Failed to parse {res} as integer: {e}"))?,
+            )
+        };
 
         Ok(num)
     }
@@ -198,12 +213,12 @@ impl Lexer {
                 Some('(') => tokens.push(Token::LP),
                 Some(')') => tokens.push(Token::RP),
                 Some('.') => {
-                    let num = Lexer::get_float(&mut expr, '.', true)?;
-                    tokens.push(Token::Value(Value::Float(num)));
+                    let num = Lexer::get_number(&mut expr, '.', true)?;
+                    tokens.push(Token::Value(num));
                 }
                 Some(num) if num.is_ascii_digit() => {
-                    let num = Lexer::get_float(&mut expr, num, false)?;
-                    tokens.push(Token::Value(Value::Float(num)));
+                    let num = Lexer::get_number(&mut expr, num, false)?;
+                    tokens.push(Token::Value(num));
                 }
                 Some('=') => {
                     if let Some(next) = expr.peek()
