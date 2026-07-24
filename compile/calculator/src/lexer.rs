@@ -78,6 +78,21 @@ impl Display for Token {
     }
 }
 
+impl Token {
+    pub fn binding_power(&self) -> Option<(u8, u8)> {
+        match self {
+            Token::Op(Op::Or) => Some((10, 11)),
+            Token::Op(Op::And) => Some((20, 21)),
+            Token::Op(Op::Lt | Op::Le | Op::Gt | Op::Ge | Op::Eq | Op::Neq) => Some((30, 31)),
+            Token::Op(Op::Add | Op::Sub) => Some((40, 41)),
+            Token::Op(Op::Mul | Op::Div) => Some((50, 51)),
+            Token::Op(Op::Exp) => Some((70, 69)),
+            Token::LP => Some((80, 0)),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lexer;
 

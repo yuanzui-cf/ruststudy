@@ -196,201 +196,18 @@ impl Parser {
     }
 
     fn expr(&mut self) -> Result<ASTNode> {
-        self.or_expr()
+        self.expr_at(0)
     }
 
-    fn or_expr(&mut self) -> Result<ASTNode> {
-        let mut res = self.and_expr()?;
-
-        loop {
-            let tok = self.peek()?;
-
-            if matches!(tok, Token::Op(Op::Or)) {
-                self.consume()?;
-                res = ASTNode::Or(Box::new(res), Box::new(self.and_expr()?));
-            } else {
-                break;
-            }
-        }
-
-        Ok(res)
-    }
-
-    fn and_expr(&mut self) -> Result<ASTNode> {
-        let mut res = self.rel_expr()?;
-
-        loop {
-            let tok = self.peek()?;
-
-            if matches!(tok, Token::Op(Op::And)) {
-                self.consume()?;
-                res = ASTNode::And(Box::new(res), Box::new(self.rel_expr()?));
-            } else {
-                break;
-            }
-        }
-
-        Ok(res)
-    }
-
-    fn rel_expr(&mut self) -> Result<ASTNode> {
-        let mut res = self.add_expr()?;
-
-        let tok = self.peek()?;
-
-        if matches!(
-            tok,
-            Token::Op(Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::Eq | Op::Neq)
-        ) {
-            let Token::Op(op) = self.consume()? else {
-                unreachable!("next is op")
-            };
-            res = ASTNode::Binary(Box::new(res), op, Box::new(self.add_expr()?));
-        }
-
-        Ok(res)
-    }
-
-    fn add_expr(&mut self) -> Result<ASTNode> {
-        let mut neg_flag = false;
-
-        if let Token::Op(op) = self.peek()?
-            && matches!(op, Op::Sub)
-        {
-            self.consume()?;
-            neg_flag = true;
-        }
-
-        let mut res = self.mul_expr()?;
-
-        if neg_flag {
-            res = ASTNode::Negate(Box::new(res));
-        }
-
-        loop {
-            let tok = self.peek()?;
-
-            if matches!(tok, Token::Op(Op::Add | Op::Sub)) {
-                let Token::Op(op) = self.consume()? else {
-                    unreachable!("next is op")
-                };
-                res = ASTNode::Binary(Box::new(res), op, Box::new(self.mul_expr()?));
-            } else {
-                break;
-            }
-        }
-
-        Ok(res)
-    }
-
-    fn mul_expr(&mut self) -> Result<ASTNode> {
-        let mut res = self.not_expr()?;
-
-        loop {
-            let tok = self.peek()?;
-
-            if matches!(tok, Token::Op(Op::Mul | Op::Div)) {
-                let Token::Op(op) = self.consume()? else {
-                    unreachable!("next is op")
-                };
-                res = ASTNode::Binary(Box::new(res), op, Box::new(self.not_expr()?));
-            } else {
-                break;
-            }
-        }
-
-        Ok(res)
-    }
-
-    fn not_expr(&mut self) -> Result<ASTNode> {
-        let mut not = false;
-
-        while let tok = self.peek()?
-            && matches!(tok, Token::Op(Op::Not))
-        {
-            self.consume()?;
-            not = !not;
-        }
-
-        let res = self.exp_expr()?;
-
-        Ok(if not {
-            ASTNode::Unary(Op::Not, Box::new(res))
-        } else {
-            res
-        })
-    }
-
-    fn exp_expr(&mut self) -> Result<ASTNode> {
-        let mut res = self.call_expr()?;
-
-        let tok = self.peek()?;
-
-        if matches!(tok, Token::Op(Op::Exp)) {
-            let Token::Op(op) = self.consume()? else {
-                unreachable!("next is op")
-            };
-            res = ASTNode::Binary(Box::new(res), op, Box::new(self.exp_expr()?));
-        }
-
-        Ok(res)
-    }
-
-    fn call_expr(&mut self) -> Result<ASTNode> {
-        let mut expr = self.base_expr()?;
-
-        loop {
-            let tok = self.peek()?;
-            let mut vals = Vec::new();
-
-            if matches!(tok, Token::LP) {
-                self.consume()?;
-
-                if !matches!(self.peek()?, Token::RP) {
-                    let val = self.expr()?;
-                    vals.push(val);
-
-                    loop {
-                        let tok = self.peek()?;
-
-                        if matches!(tok, Token::Comma) {
-                            self.consume()?;
-
-                            let val = self.expr()?;
-                            vals.push(val);
-                        } else {
-                            break;
-                        }
-                    }
-                }
-
-                if let next = self.peek()?
-                    && next != &Token::RP
-                {
-                    return Err(error::error!(Syntax, "Expected `)`, found {next}"));
-                } else {
-                    self.consume()?;
-                }
-
-                expr = ASTNode::Call(Box::new(expr), vals);
-            } else {
-                break;
-            }
-        }
-
-        Ok(expr)
-    }
-
-    fn base_expr(&mut self) -> Result<ASTNode> {
+    fn expr_at(&mut self, min_bp: u8) -> Result<ASTNode> {
         let tok = self.consume()?;
 
-        match tok {
+        let mut left = match tok {
             Token::Value(val) => Ok(ASTNode::Value(val)),
             Token::Identifier(identifier) => Ok(ASTNode::Identifier(identifier)),
             Token::If => self.condition_expr(),
             Token::Loop => self.loop_expr(),
             Token::Fn => self.fn_expr(),
-            Token::LB => self.block(),
             Token::LP => {
                 let res = self.expr()?;
 
@@ -404,6 +221,25 @@ impl Parser {
 
                 Ok(res)
             }
+
+            Token::Op(Op::Sub) => {
+                if min_bp > 0 {
+                    return Err(error::error!(
+                        Syntax,
+                        "Unary '-' not allowed here. Use parentheses, e.g., -(-x) or (-1)"
+                    ));
+                }
+
+                let res = self.expr_at(60)?;
+
+                Ok(ASTNode::Negate(Box::new(res)))
+            }
+            Token::Op(Op::Not) => {
+                let res = self.expr_at(60)?;
+
+                Ok(ASTNode::Unary(Op::Not, Box::new(res)))
+            }
+
             Token::End => Err(error::error!(
                 Syntax,
                 "Expected a number or an expression, but reached the end of the expression"
@@ -412,7 +248,61 @@ impl Parser {
                 Syntax,
                 "Expected a number or an expression, but found `{tok}`"
             )),
+        }?;
+
+        loop {
+            let next = self.peek()?;
+            let bp = next.binding_power();
+
+            if let Some((left_bp, right_bp)) = bp {
+                if left_bp < min_bp {
+                    break;
+                }
+
+                let tok = self.consume()?;
+
+                left = match tok {
+                    Token::LP => {
+                        let mut vals = Vec::new();
+                        if !matches!(self.peek()?, Token::RP) {
+                            let val = self.expr()?;
+                            vals.push(val);
+
+                            loop {
+                                let tok = self.peek()?;
+
+                                if matches!(tok, Token::Comma) {
+                                    self.consume()?;
+                                    vals.push(self.expr()?);
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+
+                        if let next = self.peek()?
+                            && next != &Token::RP
+                        {
+                            return Err(error::error!(Syntax, "Expected `)`, found {next}"));
+                        } else {
+                            self.consume()?;
+                        }
+
+                        ASTNode::Call(Box::new(left), vals)
+                    }
+                    Token::Op(op) => {
+                        let right = self.expr_at(right_bp)?;
+
+                        ASTNode::Binary(Box::new(left), op, Box::new(right))
+                    }
+                    _ => unreachable!(),
+                }
+            } else {
+                break;
+            }
         }
+
+        Ok(left)
     }
 
     fn block(&mut self) -> Result<ASTNode> {
