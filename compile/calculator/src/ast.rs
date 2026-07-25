@@ -90,84 +90,130 @@ impl Value {
         }
     }
 
-    pub fn apply_binary(self, op: &Op, other: Self) -> Result<Self> {
-        match (self, other) {
-            (Self::Integer(l), Self::Integer(r)) => match op {
-                Op::Add => Ok(Self::Integer(l + r)),
-                Op::Sub => Ok(Self::Integer(l - r)),
-                Op::Mul => Ok(Self::Integer(l * r)),
-                Op::Div => Ok(Self::Integer(l / r)),
-                Op::Exp => Ok(Self::Float((l as f64).powf(r as f64))),
-                Op::Lt => Ok(Self::Bool(l < r)),
-                Op::Le => Ok(Self::Bool(l <= r)),
-                Op::Gt => Ok(Self::Bool(l > r)),
-                Op::Ge => Ok(Self::Bool(l >= r)),
-                Op::Eq => Ok(Self::Bool(l == r)),
-                Op::Neq => Ok(Self::Bool(l != r)),
-                _ => Err(error::error!(
-                    Type,
-                    "Cannot apply `{op}` on integer and integer",
-                )),
-            },
-            (Self::Float(l), Self::Float(r)) => match op {
-                Op::Add => Ok(Self::Float(l + r)),
-                Op::Sub => Ok(Self::Float(l - r)),
-                Op::Mul => Ok(Self::Float(l * r)),
-                Op::Div => Ok(Self::Float(l / r)),
-                Op::Exp => Ok(Self::Float(l.powf(r))),
-                Op::Lt => Ok(Self::Bool(l < r)),
-                Op::Le => Ok(Self::Bool(l <= r)),
-                Op::Gt => Ok(Self::Bool(l > r)),
-                Op::Ge => Ok(Self::Bool(l >= r)),
-                Op::Eq => Ok(Self::Bool(l == r)),
-                Op::Neq => Ok(Self::Bool(l != r)),
-                _ => Err(error::error!(
-                    Type,
-                    "Cannot apply `{op}` on float and float",
-                )),
-            },
-            (Self::String(l), r) => match op {
-                Op::Add => {
-                    let mut buf = l.clone();
-                    buf.push_str(&format!("{r}"));
-                    Ok(Self::String(buf))
+    fn match_basic_math_op(self, op: &Op, other: Self) -> Result<Self> {
+        macro_rules! __basic_math_matches {
+            ($l: expr, $r: expr) => {
+                match op {
+                    Op::Add => $l + $r,
+                    Op::Sub => $l - $r,
+                    Op::Mul => $l * $r,
+                    Op::Div => $l / $r,
+                    _ => unreachable!(),
                 }
-                Op::Eq | Op::Neq => {
-                    if let Self::String(r) = r {
-                        Ok(Self::Bool(match op {
-                            Op::Eq => l == r,
-                            Op::Neq => l != r,
-                            _ => unreachable!("op is eq or neq"),
-                        }))
-                    } else {
-                        Err(error::error!(
-                            Type,
-                            "Cannot apply `{op}` on string and {}",
-                            r.type_name()
-                        ))
-                    }
+            };
+        }
+        macro_rules! basic_math_match {
+            ($cond: expr, $ty: ident $(, $others: ident)* ) => {
+                match $cond {
+                    (Self::$ty(l), Self::$ty(r)) => Self::$ty(__basic_math_matches!(l, r)),
+                    $(
+                        (Self::$others(l), Self::$others(r)) => Self::$others(__basic_math_matches!(l, r)),
+                    )*
+                    _ => unreachable!(),
                 }
+            };
+        }
+
+        if matches!(self, Self::Integer(_) | Self::Float(_))
+            && matches!(other, Self::Integer(_) | Self::Float(_))
+        {
+            if self.type_name() != other.type_name() || matches!(op, Op::Exp) {
+                let l = match self {
+                    Self::Integer(i) => i as f64,
+                    Self::Float(f) => f,
+                    _ => unreachable!(),
+                };
+
+                let r = match other {
+                    Self::Integer(i) => i as f64,
+                    Self::Float(f) => f,
+                    _ => unreachable!(),
+                };
+
+                Ok(Self::Float(match op {
+                    Op::Add => l + r,
+                    Op::Sub => l - r,
+                    Op::Mul => l * r,
+                    Op::Div => l / r,
+                    Op::Exp => l.powf(r),
+                    _ => unreachable!(),
+                }))
+            } else {
+                Ok(basic_math_match!((self, other), Integer, Float))
+            }
+        } else if matches!(self, Self::String(_)) | matches!(other, Self::String(_)) {
+            match op {
+                Op::Add => Ok(Self::String(format!("{self}{other}"))),
                 _ => Err(error::error!(
                     Type,
-                    "Cannot apply `{op}` on string and {}",
-                    r.type_name()
+                    "Cannot apply `{op}` between {} and {}",
+                    self.type_name(),
+                    other.type_name()
                 )),
-            },
-            (l, r) if l.type_name() == r.type_name() => match op {
-                Op::Eq => Ok(Self::Bool(l == r)),
-                Op::Neq => Ok(Self::Bool(l != r)),
-                _ => Err(error::error!(
-                    Type,
-                    "Cannot apply `{op}` on {} and {}",
-                    l.type_name(),
-                    r.type_name()
-                )),
-            },
-            (l, r) => Err(error::error!(
+            }
+        } else {
+            Err(error::error!(
                 Type,
                 "Cannot apply `{op}` between {} and {}",
-                l.type_name(),
-                r.type_name()
+                self.type_name(),
+                other.type_name()
+            ))
+        }
+    }
+
+    fn match_relational_op(self, op: &Op, other: Self) -> Result<Self> {
+        macro_rules! __relational_matches {
+            ($l: expr, $r: expr) => {
+                match op {
+                    Op::Lt => $l < $r,
+                    Op::Le => $l <= $r,
+                    Op::Gt => $l > $r,
+                    Op::Ge => $l >= $r,
+                    _ => unreachable!(),
+                }
+            };
+        }
+        macro_rules! relational_match {
+            ($cond: expr, $ty: ident $(, $others: ident)* ) => {
+                match $cond {
+                    (Self::$ty(l), Self::$ty(r)) => Self::Bool(__relational_matches!(l, r)),
+                    $(
+                        (Self::$others(l), Self::$others(r)) => Self::Bool(__relational_matches!(l, r)),
+                    )*
+                    _ => unreachable!(),
+                }
+            };
+        }
+
+        if matches!(self, Self::Integer(_) | Self::Float(_))
+            && matches!(other, Self::Integer(_) | Self::Float(_))
+            && self.type_name() == other.type_name()
+        {
+            Ok(relational_match!((self, other), Integer, Float))
+        } else {
+            Err(error::error!(
+                Type,
+                "Cannot apply `{op}` between {} and {}",
+                self.type_name(),
+                other.type_name()
+            ))
+        }
+    }
+
+    pub fn apply_binary(self, op: &Op, other: Self) -> Result<Self> {
+        match op {
+            Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Exp => self.match_basic_math_op(op, other),
+
+            Op::Lt | Op::Le | Op::Gt | Op::Ge => self.match_relational_op(op, other),
+
+            Op::Eq if self.type_name() == other.type_name() => Ok(Self::Bool(self == other)),
+            Op::Neq if self.type_name() == other.type_name() => Ok(Self::Bool(self != other)),
+
+            _ => Err(error::error!(
+                Type,
+                "Cannot apply `{op}` between {} and {}",
+                self.type_name(),
+                other.type_name()
             )),
         }
     }
