@@ -1,0 +1,352 @@
+use std::{fmt::Display, iter::Peekable, str::Chars};
+
+use crate::{
+    ast::{Op, Value},
+    error::{self, Result},
+};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Token {
+    Identifier(String),
+
+    // Types
+    Value(Value),
+
+    // Symbols
+    Op(Op),
+    /// {
+    LB,
+    /// }
+    RB,
+    /// (
+    LP,
+    /// )
+    RP,
+    /// =
+    Assign,
+    /// ;
+    Semi,
+    /// ,
+    Comma,
+
+    Let,
+    If,
+    Else,
+    Loop,
+    Break,
+    Continue,
+    Fn,
+    Return,
+
+    End,
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Token::Value(val) = self {
+            write!(f, "{val}")?;
+        } else if let Token::Identifier(id) = self {
+            write!(f, "{id}")?;
+        } else if let Token::Op(op) = self {
+            write!(f, "{op}")?;
+        } else {
+            write!(
+                f,
+                "{}",
+                match self {
+                    Token::LB => "{",
+                    Token::RB => "}",
+                    Token::LP => "(",
+                    Token::RP => ")",
+                    Token::Assign => "=",
+                    Token::Semi => ";",
+                    Token::Comma => ",",
+                    Token::Let => "let",
+                    Token::If => "if",
+                    Token::Else => "else",
+                    Token::Loop => "loop",
+                    Token::Break => "break",
+                    Token::Continue => "continue",
+                    Token::Fn => "fn",
+                    Token::Return => "return",
+                    Token::Op(_) | Token::Identifier(_) | Token::Value(_) | Token::End => "",
+                },
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Token {
+    pub fn binding_power(&self) -> Option<(u8, u8)> {
+        match self {
+            Token::Op(Op::Or) => Some((10, 11)),
+            Token::Op(Op::And) => Some((20, 21)),
+            Token::Op(Op::Lt | Op::Le | Op::Gt | Op::Ge | Op::Eq | Op::Neq) => Some((30, 31)),
+            Token::Op(Op::Add | Op::Sub) => Some((40, 41)),
+            Token::Op(Op::Mul | Op::Div) => Some((50, 51)),
+            Token::Op(Op::Exp) => Some((70, 69)),
+            Token::LP => Some((80, 0)),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lexer;
+
+impl Lexer {
+    fn get_number(
+        expr: &mut Peekable<Chars<'_>>,
+        first_chr: char,
+        is_decimal: bool,
+    ) -> Result<Value> {
+        let mut is_decimal = is_decimal;
+        let mut is_float = is_decimal;
+        let mut res = String::new();
+        res.push(first_chr);
+
+        while let Some(next) = expr.peek()
+            && (next.is_ascii_digit() || next == &'.')
+        {
+            let Some(chr) = expr.next() else {
+                unreachable!("next is ascii digit");
+            };
+
+            if chr == '.' {
+                if is_decimal {
+                    return Err(error::error!(Syntax, "Invalid syntax `.` found"));
+                } else {
+                    is_decimal = true;
+                    is_float = true;
+                }
+            }
+
+            res.push(chr);
+        }
+
+        if let Some(&'e' | &'E') = expr.peek() {
+            res.push(expr.next().unwrap());
+            is_float = true;
+
+            if let Some(&'+' | &'-') = expr.peek() {
+                res.push(expr.next().unwrap());
+            }
+
+            if let Some(&c) = expr.peek()
+                && c.is_ascii_digit()
+            {
+                while let Some(&c) = expr.peek()
+                    && c.is_ascii_digit()
+                {
+                    res.push(expr.next().unwrap());
+                }
+            } else {
+                let offencer = expr.peek().cloned().unwrap_or(' ');
+                return Err(error::error!(Syntax, "Invalid syntax `{offencer}` found"));
+            }
+        }
+
+        let num = if is_float {
+            Value::Float(
+                res.parse::<f64>()
+                    .map_err(|e| error::error!(Syntax, "Failed to parse {res} as float: {e}"))?,
+            )
+        } else {
+            Value::Integer(
+                res.parse::<i64>()
+                    .map_err(|e| error::error!(Syntax, "Failed to parse {res} as integer: {e}"))?,
+            )
+        };
+
+        Ok(num)
+    }
+
+    fn get_identifier(expr: &mut Peekable<Chars<'_>>, first_chr: char) -> String {
+        let mut res = String::from(first_chr);
+
+        while let Some(next) = expr.peek()
+            && (next.is_alphabetic() || next.is_ascii_digit() || next == &'_')
+        {
+            let Some(chr) = expr.next() else {
+                unreachable!("next is match identifier format");
+            };
+
+            res.push(chr);
+        }
+
+        res
+    }
+
+    pub fn tokenize(expr: &str) -> Result<Vec<Token>> {
+        let mut tokens = vec![];
+        let mut expr = expr.chars().peekable();
+
+        loop {
+            let chr = expr.next();
+
+            match chr {
+                Some('+') => tokens.push(Token::Op(Op::Add)),
+                Some('-') => tokens.push(Token::Op(Op::Sub)),
+                Some('*') => tokens.push(Token::Op(Op::Mul)),
+                Some('/') => {
+                    if let Some(next) = expr.peek() {
+                        if next == &'/' {
+                            expr.next();
+                            while let Some(next) = expr.next()
+                                && next != '\n'
+                            {}
+                            continue;
+                        } else if next == &'*' {
+                            let mut is_closed = false;
+
+                            while let Some(c) = expr.next() {
+                                if c == '*' && expr.peek() == Some(&'/') {
+                                    expr.next();
+                                    is_closed = true;
+                                    break;
+                                }
+                            }
+
+                            if !is_closed {
+                                return Err(error::error!(
+                                    Syntax,
+                                    "Unterminated block comment found"
+                                ));
+                            }
+
+                            continue;
+                        }
+                    }
+
+                    tokens.push(Token::Op(Op::Div))
+                }
+                Some('^') => tokens.push(Token::Op(Op::Exp)),
+                Some('{') => tokens.push(Token::LB),
+                Some('}') => tokens.push(Token::RB),
+                Some('(') => tokens.push(Token::LP),
+                Some(')') => tokens.push(Token::RP),
+                Some('.') => {
+                    let num = Lexer::get_number(&mut expr, '.', true)?;
+                    tokens.push(Token::Value(num));
+                }
+                Some(num) if num.is_ascii_digit() => {
+                    let num = Lexer::get_number(&mut expr, num, false)?;
+                    tokens.push(Token::Value(num));
+                }
+                Some('=') => {
+                    if let Some(next) = expr.peek()
+                        && next == &'='
+                    {
+                        expr.next();
+                        tokens.push(Token::Op(Op::Eq))
+                    } else {
+                        tokens.push(Token::Assign)
+                    }
+                }
+                Some('<') => {
+                    if let Some(next) = expr.peek()
+                        && next == &'='
+                    {
+                        expr.next();
+                        tokens.push(Token::Op(Op::Le))
+                    } else {
+                        tokens.push(Token::Op(Op::Lt))
+                    }
+                }
+                Some('>') => {
+                    if let Some(next) = expr.peek()
+                        && next == &'='
+                    {
+                        expr.next();
+                        tokens.push(Token::Op(Op::Ge))
+                    } else {
+                        tokens.push(Token::Op(Op::Gt))
+                    }
+                }
+                Some('!') => {
+                    if let Some(next) = expr.peek()
+                        && next == &'='
+                    {
+                        expr.next();
+                        tokens.push(Token::Op(Op::Neq))
+                    } else {
+                        tokens.push(Token::Op(Op::Not))
+                    }
+                }
+                Some(';') => tokens.push(Token::Semi),
+                Some(',') => tokens.push(Token::Comma),
+                Some('"') => {
+                    let mut string_buf = String::new();
+                    let mut is_closed = false;
+
+                    while let Some(c) = expr.next() {
+                        match c {
+                            '"' => {
+                                is_closed = true;
+                                break;
+                            }
+                            '\n' => break,
+                            '\\' => match expr.next() {
+                                Some('t') => string_buf.push('\t'),
+                                Some('n') => string_buf.push('\n'),
+                                Some('r') => string_buf.push('\r'),
+                                Some('"') => string_buf.push('"'),
+                                Some('\'') => string_buf.push('\''),
+                                Some('\\') => string_buf.push('\\'),
+                                Some(other) => string_buf.push(other),
+                                None => {
+                                    return Err(error::error!(
+                                        Syntax,
+                                        "Unterminated escape sequence at end of file"
+                                    ));
+                                }
+                            },
+                            _ => {
+                                string_buf.push(c);
+                            }
+                        }
+                    }
+
+                    if !is_closed {
+                        return Err(error::error!(Syntax, "Unterminated string literal"));
+                    }
+
+                    tokens.push(Token::Value(Value::String(string_buf)));
+                }
+                Some(other) if other.is_whitespace() => {
+                    continue;
+                }
+                Some(other) if other.is_alphabetic() || other == '_' => {
+                    let identifier = Lexer::get_identifier(&mut expr, other);
+                    match identifier.as_str() {
+                        "let" => tokens.push(Token::Let),
+                        "if" => tokens.push(Token::If),
+                        "else" => tokens.push(Token::Else),
+                        "true" => tokens.push(Token::Value(Value::Bool(true))),
+                        "false" => tokens.push(Token::Value(Value::Bool(false))),
+                        "none" => tokens.push(Token::Value(Value::None)),
+                        "and" => tokens.push(Token::Op(Op::And)),
+                        "or" => tokens.push(Token::Op(Op::Or)),
+                        "loop" => tokens.push(Token::Loop),
+                        "break" => tokens.push(Token::Break),
+                        "continue" => tokens.push(Token::Continue),
+                        "fn" => tokens.push(Token::Fn),
+                        "return" => tokens.push(Token::Return),
+                        _ => tokens.push(Token::Identifier(identifier)),
+                    }
+                }
+                Some(other) => {
+                    return Err(error::error!(Syntax, "Invalid syntax `{other}` found"));
+                }
+                None => {
+                    tokens.push(Token::End);
+                    break;
+                }
+            };
+        }
+
+        Ok(tokens)
+    }
+}

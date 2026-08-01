@@ -3,7 +3,16 @@ name = "calculator"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+name = "calclang"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
+thiserror.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 anyhow.workspace = true
 
-utils.workspace = true
+rustyline.workspace = true
+clap.workspace = true

@@ -1,0 +1,75 @@
+let PI = 3.14159265358979323846;
+
+fn abs(x) {
+	if x < 0 {
+		-x
+	} else {
+		x
+	}
+}
+
+fn normalize_angle(x) {
+	loop {
+		if x > PI {
+	        x = x - 2 * PI;
+		} else {
+			break;
+		}
+	}
+
+	loop {
+		if x < -PI {
+	        x = x + 2 * PI;
+		} else {
+			break;
+		}
+	}
+
+	x
+}
+
+fn sin(x) {
+	x = normalize_angle(x);
+
+	let term = x;
+	let sum = x;
+	let squared = x * x;
+
+	let i = 1;
+
+	loop {
+		if abs(term) > 1e-15 {
+			term = -term * squared / ((2 * i) * (2 * i + 1));
+			sum = sum + term;
+			i = i + 1;
+		} else {
+			break;
+		}
+	}
+
+	sum
+}
+
+fn cos(x) {
+	x = normalize_angle(x);
+
+	let term = 1;
+	let sum = 1;
+	let squared = x * x;
+
+	let i = 1;
+
+	loop {
+		if abs(term) > 1e-15 {
+			term = -term * squared / ((2 * i - 1) * (2 * i));
+			sum = sum + term;
+			i = i + 1;
+		} else {
+			break;
+		}
+	}
+
+	sum
+}
+
+println("SIN(PI/3): ",sin(PI/3), "\nCOS(PI/3): ", cos(PI/3));

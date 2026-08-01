@@ -1,0 +1,54 @@
+letter ::= [a-zA-Z_]
+digit ::= [0-9]
+identifier ::= letter ( letter | digit )*
+char ::= #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+
+literal ::= integer_literal | float_literal | bool_literal | string_literal | none_literal
+
+integer_literal ::= digit+
+float_literal ::= ( digit+ ( "." digit* )? | "." digit+ ) ( [eE] [+-]? digit+ )?
+bool_literal ::= "true" | "false"
+string_literal ::= '"' (char - '"' | escape_sequence )* '"'
+none_literal ::= "none"
+
+escape_sequence ::= '\' [tnr"'\\]
+
+expr ::= or_expr
+or_expr ::= and_expr ( "or" and_expr )*
+and_expr ::= rel_expr ( "and" rel_expr )*
+rel_expr ::= add_expr ( ("<" | "<=" | ">" | ">=" | "==" | "!=") add_expr )?
+add_expr ::= "-"? mul_expr ( ( "+" | "-" ) mul_expr )*
+mul_expr ::= not_expr ( ( "*" | "/" ) not_expr )*
+not_expr ::= "!"* exp_expr
+exp_expr ::= call_expr ( "^" exp_expr )?
+call_expr ::= base_expr ( "(" ( expr ( "," expr )* )? ")" )*
+base_expr ::= literal
+			| identifier
+			| block
+			| block_like_expr
+			| "(" expr ")"
+
+define ::= "let" identifier ( "=" expr )?
+assignment ::= identifier "=" expr
+
+block_like_expr ::= condition_expr | loop_expr | fn_expr
+
+block ::= "{" statement* expr? "}"
+
+condition_expr ::= "if" expr block ( "else" ( condition_expr | block ) )?
+loop_expr ::= "loop" block
+break ::= "break" expr?
+continue ::= "continue"
+
+fn_expr ::= "fn" identifier? "(" ( identifier ( "," identifier )* )? ")" block
+return ::= "return" expr?
+
+statement ::= ( assignment
+				| define
+				| break
+				| continue
+				| return
+				| expr )? ";"
+			  | block_like_expr ";"?
+
+program ::= statement* expr?

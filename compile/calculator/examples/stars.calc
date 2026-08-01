@@ -1,0 +1,30 @@
+fn star(x) {
+	let i = 1;
+	loop {
+		if i < x {
+			let buf = "";
+			let j = 0;
+			loop {
+				if j < x - i {
+					buf = buf + " ";
+					j = j + 1;
+				} else { break; }
+			}
+			j = 0;
+			loop {
+				if j < i {
+					if j == 0 {
+						buf = buf + "*";
+					} else {
+						buf = buf + " *";
+					}
+					j = j + 1;
+				} else { break; }
+			}
+			println(buf);
+			i = i + 1;
+		} else { break; }
+	}
+}
+
+star(10)
