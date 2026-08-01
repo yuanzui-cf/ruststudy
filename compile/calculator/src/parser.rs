@@ -208,6 +208,7 @@ impl Parser {
             Token::If => self.condition_expr(),
             Token::Loop => self.loop_expr(),
             Token::Fn => self.fn_expr(),
+            Token::LB => self.block(),
             Token::LP => {
                 let res = self.expr()?;
 
@@ -223,7 +224,7 @@ impl Parser {
             }
 
             Token::Op(Op::Sub) => {
-                if min_bp > 0 {
+                if min_bp > 40 {
                     return Err(error::error!(
                         Syntax,
                         "Unary '-' not allowed here. Use parentheses, e.g., -(-x) or (-1)"
@@ -289,6 +290,16 @@ impl Parser {
                         }
 
                         ASTNode::Call(Box::new(left), vals)
+                    }
+                    Token::Op(Op::And) => {
+                        let right = self.expr_at(right_bp)?;
+
+                        ASTNode::And(Box::new(left), Box::new(right))
+                    }
+                    Token::Op(Op::Or) => {
+                        let right = self.expr_at(right_bp)?;
+
+                        ASTNode::Or(Box::new(left), Box::new(right))
                     }
                     Token::Op(op) => {
                         let right = self.expr_at(right_bp)?;

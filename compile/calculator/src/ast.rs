@@ -97,7 +97,12 @@ impl Value {
                     Op::Add => $l + $r,
                     Op::Sub => $l - $r,
                     Op::Mul => $l * $r,
-                    Op::Div => $l / $r,
+                    Op::Div => {
+                        if $r as f64 == 0. {
+                            return Err(error::error!(Runtime, "Attempt to divide by zero"));
+                        }
+                        $l / $r
+                    }
                     _ => unreachable!(),
                 }
             };
@@ -117,7 +122,29 @@ impl Value {
         if matches!(self, Self::Integer(_) | Self::Float(_))
             && matches!(other, Self::Integer(_) | Self::Float(_))
         {
-            if self.type_name() != other.type_name() || matches!(op, Op::Exp) {
+            if matches!(op, Op::Exp) {
+                if let Self::Integer(l) = self
+                    && let Self::Integer(r) = other
+                    && r >= 0
+                    && r < u32::MAX as i64
+                {
+                    Ok(Self::Integer(l.pow(r as u32)))
+                } else {
+                    let l = match self {
+                        Self::Integer(i) => i as f64,
+                        Self::Float(f) => f,
+                        _ => unreachable!(),
+                    };
+
+                    let r = match other {
+                        Self::Integer(i) => i as f64,
+                        Self::Float(f) => f,
+                        _ => unreachable!(),
+                    };
+
+                    Ok(Self::Float(l.powf(r)))
+                }
+            } else if self.type_name() != other.type_name() {
                 let l = match self {
                     Self::Integer(i) => i as f64,
                     Self::Float(f) => f,
@@ -134,8 +161,12 @@ impl Value {
                     Op::Add => l + r,
                     Op::Sub => l - r,
                     Op::Mul => l * r,
-                    Op::Div => l / r,
-                    Op::Exp => l.powf(r),
+                    Op::Div => {
+                        if r == 0. {
+                            return Err(error::error!(Runtime, "Attempt to divide by zero"));
+                        }
+                        l / r
+                    }
                     _ => unreachable!(),
                 }))
             } else {
